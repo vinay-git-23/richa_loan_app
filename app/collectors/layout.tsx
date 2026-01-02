@@ -15,7 +15,8 @@ import {
     X,
     LogOut,
     ChevronRight,
-    ArrowLeft
+    ArrowLeft,
+    Settings
 } from 'lucide-react'
 
 interface SidebarContextType {
@@ -60,6 +61,7 @@ function CollectorLayoutContent({ children }: { children: React.ReactNode }) {
         { name: 'Cash Account', href: '/collectors/cash-account', icon: Wallet, color: 'from-orange-600 to-amber-600' },
         { name: 'History', href: '/collectors/history', icon: Clock, color: 'from-indigo-600 to-purple-600' },
         { name: 'Penalties', href: '/collectors/penalties', icon: AlertTriangle, color: 'from-rose-600 to-pink-600' },
+        { name: 'Settings', href: '/collectors/settings', icon: Settings, color: 'from-slate-600 to-slate-700' },
     ]
 
     const isHomePage = pathname === '/collectors/dashboard'

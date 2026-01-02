@@ -35,16 +35,17 @@ model Customer {
 // COLLECTORS TABLE
 // ============================================
 model Collector {
-  id           Int       @id @default(autoincrement())
-  name         String    @db.VarChar(100)
-  mobile       String    @unique @db.VarChar(15)
-  email        String?   @unique @db.VarChar(100)
-  passwordHash String    @db.VarChar(255)
-  collectorId  String    @unique @db.VarChar(20)
-  isActive     Boolean   @default(true)
-  lastLogin    DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id            Int       @id @default(autoincrement())
+  name          String    @db.VarChar(100)
+  mobile        String    @unique @db.VarChar(15)
+  email         String?   @unique @db.VarChar(100)
+  passwordHash  String    @db.VarChar(255)
+  plainPassword String?   @db.VarChar(50) // Store plain password for collector to view
+  collectorId   String    @unique @db.VarChar(20)
+  isActive      Boolean   @default(true)
+  lastLogin     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   tokens       Token[]
   payments     Payment[]

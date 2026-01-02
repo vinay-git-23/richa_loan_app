@@ -133,6 +133,7 @@ export default function SettingsPage() {
                     newPassword: '',
                     confirmPassword: '',
                 })
+                fetchSettings()
                 setTimeout(() => setPasswordSuccess(''), 3000)
             } else {
                 setPasswordError(result.error || 'Password update failed')
@@ -164,7 +165,7 @@ export default function SettingsPage() {
     }
 
     return (
-        <div className="max-w-5xl mx-auto space-y-8 pb-20">
+        <div className="max-w-5xl mx-auto space-y-8 pb-20 px-5 pt-6">
             {/* Page Header */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                 <div>
@@ -317,7 +318,7 @@ export default function SettingsPage() {
                         <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center text-slate-600">
                             <Lock className="w-5 h-5" />
                         </div>
-                        <h3 className="text-lg font-bold text-slate-900 tracking-tight">Security Settings</h3>
+                        <h3 className="text-lg font-bold text-slate-900 tracking-tight">Change Password</h3>
                     </div>
 
                     <form onSubmit={handlePasswordChange} className="space-y-6">

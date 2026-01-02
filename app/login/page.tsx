@@ -249,29 +249,6 @@ export default function LoginPage() {
             </form>
           )}
 
-          {/* Demo Credentials */}
-          <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
-            <p className="text-xs font-semibold text-gray-700 mb-2">Demo Credentials:</p>
-            {loginType === 'admin' ? (
-              <div className="text-xs text-gray-600 space-y-1">
-                <p>
-                  <span className="font-medium">Username:</span> superadmin
-                </p>
-                <p>
-                  <span className="font-medium">Password:</span> Admin@123
-                </p>
-              </div>
-            ) : (
-              <div className="text-xs text-gray-600 space-y-1">
-                <p>
-                  <span className="font-medium">Mobile:</span> 9876543210
-                </p>
-                <p>
-                  <span className="font-medium">Password:</span> Collector@123
-                </p>
-              </div>
-            )}
-          </div>
         </div>
 
         {/* Footer */}

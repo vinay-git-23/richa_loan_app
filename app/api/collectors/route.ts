@@ -116,8 +116,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Mobile number already exists' }, { status: 400 })
     }
 
-    // Hash default password (same as collector ID or mobile)
-    const hashedPassword = await bcrypt.hash('Collector@123', 10)
+    // Generate password using collectorId
+    const generatedPassword = collectorId
+    const hashedPassword = await bcrypt.hash(generatedPassword, 10)
 
     // Create collector
     const collector = await prisma.collector.create({
@@ -126,13 +127,17 @@ export async function POST(req: NextRequest) {
         collectorId,
         mobile,
         passwordHash: hashedPassword,
+        plainPassword: generatedPassword, // Store plain password for display
         isActive: true,
       },
     })
 
     return NextResponse.json({
       success: true,
-      data: collector,
+      data: {
+        ...collector,
+        generatedPassword, // Return password in response
+      },
       message: 'Collector created successfully',
     })
   } catch (error) {

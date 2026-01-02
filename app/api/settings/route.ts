@@ -39,6 +39,7 @@ export async function GET(req: NextRequest) {
           name: true,
           mobile: true,
           collectorId: true,
+          plainPassword: true, // Include password for display
           lastLogin: true,
           createdAt: true,
         },

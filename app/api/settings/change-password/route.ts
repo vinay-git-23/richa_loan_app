@@ -69,10 +69,13 @@ export async function POST(req: NextRequest) {
             // Hash new password
             const hashedPassword = await bcrypt.hash(newPassword, 10)
 
-            // Update password
+            // Update password and plainPassword
             await prisma.collector.update({
                 where: { id: parseInt(session.user.id) },
-                data: { passwordHash: hashedPassword },
+                data: {
+                    passwordHash: hashedPassword,
+                    plainPassword: newPassword // Store plain password for display
+                },
             })
         }
 

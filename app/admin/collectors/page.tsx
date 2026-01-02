@@ -341,6 +341,10 @@ function CollectorModal({
       const result = await response.json()
 
       if (response.ok) {
+        // Show generated password for new collectors
+        if (!collector && result.data?.generatedPassword) {
+          alert(`Collector created successfully!\n\nLogin Credentials:\nCollector ID: ${result.data.collectorId}\nPassword: ${result.data.generatedPassword}\n\nPlease save these credentials. The collector can view the password in their profile.`)
+        }
         onSuccess()
       } else {
         setError(result.error || 'Failed to save collector')
