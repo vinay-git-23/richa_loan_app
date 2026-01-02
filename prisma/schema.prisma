@@ -1,0 +1,298 @@
+// This is your Prisma schema file
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// CUSTOMERS TABLE
+// ============================================
+model Customer {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(100)
+  mobile    String   @unique @db.VarChar(15)
+  address   String?  @db.Text
+  aadhaar   String?  @db.VarChar(12)
+  photoUrl  String?  @db.LongText
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tokens      Token[]
+  assignments CustomerCollectorAssignment[]
+
+  @@index([mobile])
+  @@index([isActive])
+  @@map("customers")
+}
+
+// ============================================
+// COLLECTORS TABLE
+// ============================================
+model Collector {
+  id           Int       @id @default(autoincrement())
+  name         String    @db.VarChar(100)
+  mobile       String    @unique @db.VarChar(15)
+  email        String?   @unique @db.VarChar(100)
+  passwordHash String    @db.VarChar(255)
+  collectorId  String    @unique @db.VarChar(20)
+  isActive     Boolean   @default(true)
+  lastLogin    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  tokens       Token[]
+  payments     Payment[]
+  assignments  CustomerCollectorAssignment[]
+  cashDeposits CashDeposit[]
+
+  @@index([mobile])
+  @@index([isActive])
+  @@index([collectorId])
+  @@map("collectors")
+}
+
+// ============================================
+// TOKENS/LOANS TABLE
+// ============================================
+model Token {
+  id               Int         @id @default(autoincrement())
+  tokenNo          String      @unique @db.VarChar(50)
+  customerId       Int
+  collectorId      Int
+  loanAmount       Decimal     @db.Decimal(10, 2)
+  interestType     InterestType
+  interestValue    Decimal     @db.Decimal(10, 2)
+  totalAmount      Decimal     @db.Decimal(10, 2)
+  durationDays     Int
+  dailyInstallment Decimal     @db.Decimal(10, 2)
+  startDate        DateTime    @db.Date
+  endDate          DateTime    @db.Date
+  status           TokenStatus @default(active)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  customer  Customer            @relation(fields: [customerId], references: [id])
+  collector Collector           @relation(fields: [collectorId], references: [id])
+  schedules RepaymentSchedule[]
+  payments  Payment[]
+
+  @@index([tokenNo])
+  @@index([customerId])
+  @@index([collectorId])
+  @@index([status])
+  @@index([startDate, endDate])
+  @@map("tokens")
+}
+
+enum InterestType {
+  fixed
+  percentage
+}
+
+enum TokenStatus {
+  active
+  closed
+  overdue
+  cancelled
+}
+
+// ============================================
+// REPAYMENT SCHEDULE TABLE
+// ============================================
+model RepaymentSchedule {
+  id                Int            @id @default(autoincrement())
+  tokenId           Int
+  scheduleDate      DateTime       @db.Date
+  installmentAmount Decimal        @db.Decimal(10, 2)
+  penaltyAmount     Decimal        @default(0) @db.Decimal(10, 2)
+  totalDue          Decimal        @db.Decimal(10, 2)
+  paidAmount        Decimal        @default(0) @db.Decimal(10, 2)
+  paymentDate       DateTime?      @db.Date
+  status            ScheduleStatus @default(pending)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  token    Token     @relation(fields: [tokenId], references: [id], onDelete: Cascade)
+  payments Payment[]
+
+  @@index([tokenId])
+  @@index([scheduleDate])
+  @@index([status])
+  @@index([tokenId, scheduleDate])
+  @@map("repayment_schedule")
+}
+
+enum ScheduleStatus {
+  pending
+  paid
+  overdue
+  partial
+}
+
+// ============================================
+// PAYMENTS TABLE
+// ============================================
+model Payment {
+  id          Int         @id @default(autoincrement())
+  tokenId     Int
+  scheduleId  Int
+  collectorId Int
+  amount      Decimal     @db.Decimal(10, 2)
+  paymentMode PaymentMode @default(cash)
+  paymentDate DateTime    @db.Date
+  remarks     String?     @db.Text
+  photoUrl    String?     @db.LongText
+  isSynced    Boolean     @default(false)
+  createdAt   DateTime    @default(now())
+
+  token     Token             @relation(fields: [tokenId], references: [id])
+  schedule  RepaymentSchedule @relation(fields: [scheduleId], references: [id])
+  collector Collector         @relation(fields: [collectorId], references: [id])
+
+  @@index([tokenId])
+  @@index([paymentDate])
+  @@index([collectorId])
+  @@index([isSynced])
+  @@map("payments")
+}
+
+enum PaymentMode {
+  cash
+  upi
+  bank_transfer
+}
+
+// ============================================
+// PENALTY CONFIGURATION TABLE
+// ============================================
+model PenaltyConfig {
+  id              Int         @id @default(autoincrement())
+  penaltyType     PenaltyType
+  penaltyValue    Decimal     @db.Decimal(10, 2)
+  graceDays       Int         @default(0)
+  applyToLoanType String?     @db.VarChar(50)
+  isActive        Boolean     @default(true)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([isActive])
+  @@map("penalty_config")
+}
+
+enum PenaltyType {
+  fixed
+  percent
+}
+
+// ============================================
+// ADMIN USERS TABLE
+// ============================================
+model AdminUser {
+  id           Int       @id @default(autoincrement())
+  username     String    @unique @db.VarChar(50)
+  email        String    @unique @db.VarChar(100)
+  passwordHash String    @db.VarChar(255)
+  role         AdminRole @default(admin)
+  isActive     Boolean   @default(true)
+  lastLogin    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  verifiedDeposits CashDeposit[] @relation("VerifiedBy")
+  systemLogs       SystemLog[]
+
+  @@index([username])
+  @@index([role])
+  @@index([isActive])
+  @@map("admin_users")
+}
+
+enum AdminRole {
+  super_admin
+  admin
+  director
+}
+
+// ============================================
+// CUSTOMER-COLLECTOR ASSIGNMENT TABLE
+// ============================================
+model CustomerCollectorAssignment {
+  id           Int       @id @default(autoincrement())
+  customerId   Int
+  collectorId  Int
+  assignedDate DateTime  @db.Date
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+
+  customer  Customer  @relation(fields: [customerId], references: [id])
+  collector Collector @relation(fields: [collectorId], references: [id])
+
+  @@unique([customerId, collectorId])
+  @@index([customerId])
+  @@index([collectorId])
+  @@index([isActive])
+  @@map("customer_collector_assignment")
+}
+
+// ============================================
+// CASH DEPOSITS TABLE
+// ============================================
+model CashDeposit {
+  id               Int            @id @default(autoincrement())
+  collectorId      Int
+  amount           Decimal        @db.Decimal(10, 2)
+  depositDate      DateTime       @db.Date
+  receiptUrl       String?        @db.VarChar(255)
+  verifiedBy       Int?
+  verificationDate DateTime?
+  status           DepositStatus  @default(pending)
+  createdAt        DateTime       @default(now())
+
+  collector Collector  @relation(fields: [collectorId], references: [id])
+  verifier  AdminUser? @relation("VerifiedBy", fields: [verifiedBy], references: [id])
+
+  @@index([collectorId])
+  @@index([depositDate])
+  @@index([status])
+  @@map("cash_deposits")
+}
+
+enum DepositStatus {
+  pending
+  verified
+  rejected
+}
+
+// ============================================
+// SYSTEM LOGS TABLE
+// ============================================
+model SystemLog {
+  id         Int       @id @default(autoincrement())
+  userType   UserType
+  userId     Int
+  action     String    @db.VarChar(100)
+  entityType String    @db.VarChar(50)
+  entityId   Int?
+  details    Json?
+  ipAddress  String?   @db.VarChar(45)
+  createdAt  DateTime  @default(now())
+
+  adminUser AdminUser? @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([action])
+  @@map("system_logs")
+}
+
+enum UserType {
+  admin
+  collector
+  director
+}
