@@ -116,8 +116,29 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Mobile number already exists' }, { status: 400 })
     }
 
-    // Generate password using collectorId
-    const generatedPassword = collectorId
+    // Generate random secure password (8 characters: uppercase, lowercase, numbers)
+    const generateRandomPassword = (length: number = 8): string => {
+      const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+      const lowercase = 'abcdefghijklmnopqrstuvwxyz'
+      const numbers = '0123456789'
+      const allChars = uppercase + lowercase + numbers
+      
+      let password = ''
+      // Ensure at least one character from each type
+      password += uppercase[Math.floor(Math.random() * uppercase.length)]
+      password += lowercase[Math.floor(Math.random() * lowercase.length)]
+      password += numbers[Math.floor(Math.random() * numbers.length)]
+      
+      // Fill the rest randomly
+      for (let i = password.length; i < length; i++) {
+        password += allChars[Math.floor(Math.random() * allChars.length)]
+      }
+      
+      // Shuffle the password
+      return password.split('').sort(() => Math.random() - 0.5).join('')
+    }
+    
+    const generatedPassword = generateRandomPassword(8)
     const hashedPassword = await bcrypt.hash(generatedPassword, 10)
 
     // Create collector

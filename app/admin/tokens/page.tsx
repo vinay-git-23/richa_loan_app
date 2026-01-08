@@ -6,12 +6,14 @@ import { Search, Plus, Eye, Calendar, IndianRupee, User, TrendingUp, Shield, Bri
 import { formatCurrency } from '@/utils/calculations'
 import { format } from 'date-fns'
 
-interface Token {
+interface TokenBatch {
     id: number
-    tokenNo: string
+    batchNo: string
+    quantity: number
     loanAmount: number
-    totalAmount: number
-    duration: number
+    totalBatchAmount: number
+    totalDailyAmount: number
+    durationDays: number
     startDate: string
     endDate: string
     status: string
@@ -21,12 +23,23 @@ interface Token {
     }
     collector: {
         name: string
+        collectorId: string
     }
+    tokens: {
+        id: number
+        tokenNo: string
+        status: string
+    }[]
+    batchSchedules: {
+        scheduleDate: string
+        totalDue: number
+        paidAmount: number
+    }[]
 }
 
 export default function TokensPage() {
     const router = useRouter()
-    const [tokens, setTokens] = useState<Token[]>([])
+    const [batches, setBatches] = useState<TokenBatch[]>([])
     const [loading, setLoading] = useState(true)
     const [search, setSearch] = useState('')
     const [filterStatus, setFilterStatus] = useState<string>('all')
@@ -34,10 +47,10 @@ export default function TokensPage() {
     const [totalPages, setTotalPages] = useState(1)
 
     useEffect(() => {
-        fetchTokens()
+        fetchBatches()
     }, [page, search, filterStatus])
 
-    const fetchTokens = async () => {
+    const fetchBatches = async () => {
         setLoading(true)
         try {
             const params = new URLSearchParams({
@@ -48,22 +61,22 @@ export default function TokensPage() {
             if (search) params.append('search', search)
             if (filterStatus !== 'all') params.append('status', filterStatus)
 
-            const response = await fetch(`/api/tokens?${params}`)
+            const response = await fetch(`/api/token-batches?${params}`)
             const result = await response.json()
 
             if (result.success) {
-                setTokens(result.data)
+                setBatches(result.data)
                 setTotalPages(result.pagination?.totalPages || 1)
             }
         } catch (error) {
-            console.error('Failed to fetch tokens:', error)
+            console.error('Failed to fetch token batches:', error)
         } finally {
             setLoading(false)
         }
     }
 
-    const handleViewDetails = (tokenId: number) => {
-        router.push(`/admin/tokens/${tokenId}`)
+    const handleViewDetails = (batchId: number) => {
+        router.push(`/admin/token-batches/${batchId}`)
     }
 
     return (
@@ -71,15 +84,15 @@ export default function TokensPage() {
             {/* Header */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                 <div>
-                    <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Tokens</h1>
-                    <p className="text-slate-500 text-sm mt-1">Monitor and manage all loan tokens and their collection status.</p>
+                    <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Token Batches</h1>
+                    <p className="text-slate-500 text-sm mt-1">Monitor and manage all token batches treated as unified loan entities.</p>
                 </div>
                 <button
                     onClick={() => router.push('/admin/tokens/create')}
                     className="flex items-center gap-2 px-6 py-3 bg-zinc-900 text-white rounded-xl font-bold text-sm transition-all hover:bg-orange-600 active:scale-95 shadow-md"
                 >
                     <Plus className="w-5 h-5" />
-                    Add Token
+                    New Batch
                 </button>
             </div>
 
@@ -90,7 +103,7 @@ export default function TokensPage() {
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                         <input
                             type="text"
-                            placeholder="Search by token ID, customer or mobile..."
+                            placeholder="Search by batch ID, customer or mobile..."
                             value={search}
                             onChange={(e) => {
                                 setSearch(e.target.value)
@@ -120,17 +133,17 @@ export default function TokensPage() {
                 </div>
             </div>
 
-            {/* Tokens Content */}
+            {/* Batches Content */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 {loading ? (
                     <div className="flex flex-col items-center justify-center p-20 gap-4">
                         <div className="w-12 h-12 border-4 border-slate-100 border-t-orange-600 rounded-full animate-spin"></div>
-                        <p className="text-xs font-bold uppercase tracking-widest text-slate-400 animate-pulse">Syncing Tokens...</p>
+                        <p className="text-xs font-bold uppercase tracking-widest text-slate-400 animate-pulse">Syncing Batches...</p>
                     </div>
-                ) : tokens.length === 0 ? (
+                ) : batches.length === 0 ? (
                     <div className="flex flex-col items-center justify-center p-20 text-slate-400 text-center">
                         <Activity className="w-12 h-12 text-slate-200 mb-4" />
-                        <p className="text-lg font-bold text-slate-900">No Tokens Found</p>
+                        <p className="text-lg font-bold text-slate-900">No Token Batches Found</p>
                         <p className="text-sm text-slate-500 mt-1">Try adjusting your search or filters.</p>
                     </div>
                 ) : (
@@ -140,16 +153,19 @@ export default function TokensPage() {
                                 <thead>
                                     <tr className="bg-slate-50/50 border-b border-slate-100">
                                         <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                                            Token Details
+                                            Batch Details
                                         </th>
                                         <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                                             Customer
                                         </th>
                                         <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                                            Collector
+                                            Quantity
                                         </th>
                                         <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                                            Amount
+                                            Daily Collection
+                                        </th>
+                                        <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                            Total Amount
                                         </th>
                                         <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                                             Status
@@ -160,71 +176,84 @@ export default function TokensPage() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
-                                    {tokens.map((token) => (
-                                        <tr key={token.id} className="group hover:bg-slate-50/50 transition-colors">
-                                            <td className="px-6 py-5">
-                                                <div className="flex items-center gap-4">
-                                                    <div className="w-10 h-10 bg-orange-50 rounded-lg flex items-center justify-center text-orange-600 font-bold text-xs border border-orange-100 group-hover:bg-orange-600 group-hover:text-white transition-all">
-                                                        #{token.tokenNo.slice(-2)}
+                                    {batches.map((batch) => {
+                                        const nextDue = batch.batchSchedules?.[0]
+                                        return (
+                                            <tr key={batch.id} className="group hover:bg-slate-50/50 transition-colors">
+                                                <td className="px-6 py-5">
+                                                    <div className="flex items-center gap-4">
+                                                        <div className="w-10 h-10 bg-orange-50 rounded-lg flex items-center justify-center text-orange-600 font-bold text-xs border border-orange-100 group-hover:bg-orange-600 group-hover:text-white transition-all">
+                                                            {batch.quantity}x
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-sm font-bold text-slate-900">{batch.batchNo}</p>
+                                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+                                                                {format(new Date(batch.startDate), 'dd MMM')} - {format(new Date(batch.endDate), 'dd MMM yyyy')}
+                                                            </p>
+                                                        </div>
                                                     </div>
+                                                </td>
+                                                <td className="px-6 py-5">
                                                     <div>
-                                                        <p className="text-sm font-bold text-slate-900">{token.tokenNo}</p>
+                                                        <p className="text-sm font-bold text-slate-900 uppercase">{batch.customer.name}</p>
+                                                        <p className="text-[10px] font-bold text-slate-400 tracking-wider mt-0.5">{batch.customer.mobile}</p>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-5">
+                                                    <div>
+                                                        <p className="text-sm font-bold text-purple-600">{batch.quantity} Tokens</p>
                                                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
-                                                            Started: {format(new Date(token.startDate), 'dd MMM yyyy')}
+                                                            {formatCurrency(batch.loanAmount)} each
                                                         </p>
                                                     </div>
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-5">
-                                                <div>
-                                                    <p className="text-sm font-bold text-slate-900 uppercase">{token.customer.name}</p>
-                                                    <p className="text-[10px] font-bold text-slate-400 tracking-wider mt-0.5">{token.customer.mobile}</p>
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-5">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center text-slate-400">
-                                                        <User className="w-4 h-4" />
+                                                </td>
+                                                <td className="px-6 py-5">
+                                                    <div>
+                                                        <p className="text-sm font-bold text-blue-600 font-mono">
+                                                            {formatCurrency(batch.totalDailyAmount)}
+                                                        </p>
+                                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+                                                            {batch.durationDays} Days
+                                                        </p>
                                                     </div>
-                                                    <p className="text-xs font-bold text-slate-600 uppercase tracking-widest">{token.collector.name}</p>
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-5">
-                                                <div>
-                                                    <p className="text-sm font-bold text-slate-900 font-mono">
-                                                        {formatCurrency(token.totalAmount)}
-                                                    </p>
-                                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
-                                                        {token.duration} Days
-                                                    </p>
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-5">
-                                                <span
-                                                    className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest ${token.status === 'active'
-                                                        ? 'bg-emerald-50 text-emerald-600 border border-emerald-100'
-                                                        : token.status === 'closed'
-                                                            ? 'bg-slate-100 text-slate-400 border border-slate-200'
-                                                            : token.status === 'overdue'
-                                                                ? 'bg-rose-50 text-rose-600 border border-rose-100'
-                                                                : 'bg-amber-50 text-amber-600 border border-amber-100'
-                                                        }`}
-                                                >
-                                                    <div className={`w-1.5 h-1.5 rounded-full mr-2 ${token.status === 'active' ? 'bg-emerald-500' : token.status === 'overdue' ? 'bg-rose-500' : 'bg-slate-300'}`}></div>
-                                                    {token.status}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-5 text-right">
-                                                <button
-                                                    onClick={() => handleViewDetails(token.id)}
-                                                    className="p-2 text-slate-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-all"
-                                                    title="View Details"
-                                                >
-                                                    <Eye className="w-5 h-5" />
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ))}
+                                                </td>
+                                                <td className="px-6 py-5">
+                                                    <div>
+                                                        <p className="text-sm font-bold text-slate-900 font-mono">
+                                                            {formatCurrency(batch.totalBatchAmount)}
+                                                        </p>
+                                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+                                                            Combined
+                                                        </p>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-5">
+                                                    <span
+                                                        className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest ${batch.status === 'active'
+                                                            ? 'bg-emerald-50 text-emerald-600 border border-emerald-100'
+                                                            : batch.status === 'closed'
+                                                                ? 'bg-slate-100 text-slate-400 border border-slate-200'
+                                                                : batch.status === 'overdue'
+                                                                    ? 'bg-rose-50 text-rose-600 border border-rose-100'
+                                                                    : 'bg-amber-50 text-amber-600 border border-amber-100'
+                                                            }`}
+                                                    >
+                                                        <div className={`w-1.5 h-1.5 rounded-full mr-2 ${batch.status === 'active' ? 'bg-emerald-500' : batch.status === 'overdue' ? 'bg-rose-500' : 'bg-slate-300'}`}></div>
+                                                        {batch.status}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-5 text-right">
+                                                    <button
+                                                        onClick={() => handleViewDetails(batch.id)}
+                                                        className="p-2 text-slate-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-all"
+                                                        title="View Details"
+                                                    >
+                                                        <Eye className="w-5 h-5" />
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        )
+                                    })}
                                 </tbody>
                             </table>
                         </div>

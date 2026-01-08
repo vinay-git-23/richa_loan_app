@@ -13,7 +13,8 @@ import {
     ChevronRight,
     Gavel,
     User,
-    Calendar
+    Calendar,
+    Wallet
 } from 'lucide-react'
 import { formatCurrency } from '@/utils/calculations'
 import { format } from 'date-fns'
@@ -72,26 +73,26 @@ export default function PenaltiesPage() {
 
     return (
         <div className="min-h-screen bg-[#F8FAFC] pb-24 font-sans">
-            {/* Header */}
-            <div className="bg-[#0F172A] pt-8 pb-16 px-6 relative overflow-hidden text-white">
-                <div className="absolute top-0 right-0 w-64 h-64 bg-orange-500/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
+            {/* Header - Lighter Orange Theme */}
+            <div className="bg-gradient-to-br from-orange-500 to-orange-400 pt-8 pb-16 px-6 relative overflow-hidden text-white">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
 
                 <div className="relative z-10 flex items-center gap-4 mb-6">
                     <button
                         onClick={() => router.push('/collectors/dashboard')}
-                        className="p-2 bg-slate-800/50 rounded-xl border border-slate-700/50 text-slate-300 hover:text-white transition-colors backdrop-blur-sm"
+                        className="p-2 bg-white/20 hover:bg-white/30 rounded-xl transition-colors backdrop-blur-sm"
                     >
-                        <ArrowLeft className="w-5 h-5" />
+                        <ArrowLeft className="w-5 h-5 text-white" />
                     </button>
-                    <h1 className="text-xl font-bold tracking-tight text-orange-400">Penalty Cases</h1>
+                    <h1 className="text-xl font-black tracking-tight">Penalty Cases</h1>
                 </div>
 
-                <div className="relative z-10 bg-white/5 backdrop-blur-md rounded-2xl p-5 border border-white/10 shadow-2xl flex items-center justify-between">
+                <div className="relative z-10 bg-white/20 backdrop-blur-md rounded-2xl p-5 border border-white/30 shadow-2xl flex items-center justify-between">
                     <div>
-                        <p className="text-orange-300 text-[10px] font-black uppercase tracking-widest mb-1">Total Penalty Amount</p>
+                        <p className="text-orange-100 text-[10px] font-black uppercase tracking-widest mb-1">Total Penalty Amount</p>
                         <p className="text-3xl font-black">{formatCurrency(totalPenalty)}</p>
                     </div>
-                    <div className="w-12 h-12 bg-orange-600 rounded-2xl flex items-center justify-center shadow-lg shadow-orange-500/30">
+                    <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center shadow-lg border border-white/30">
                         <Gavel className="w-6 h-6 text-white" />
                     </div>
                 </div>
@@ -153,24 +154,53 @@ export default function PenaltiesPage() {
                 )}
             </div>
 
-            {/* Nav */}
-            <div className="fixed bottom-6 left-5 right-5 z-50">
-                <div className="bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-3xl p-3 shadow-2xl flex items-center justify-around">
-                    <button onClick={() => router.push('/collectors/dashboard')} className="flex flex-col items-center gap-1.5 text-slate-500">
-                        <div className="p-2 hover:bg-white/5 rounded-2xl transition-all"><TrendingUp className="w-5 h-5" /></div>
-                        <span className="text-[10px] font-bold uppercase tracking-widest">Home</span>
+            {/* Fixed Bottom Menu - Consistent with other pages */}
+            <div className="fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t-2 border-slate-200 shadow-2xl">
+                <div className="max-w-md mx-auto px-4 py-3 flex items-center justify-around">
+                    <button
+                        onClick={() => router.push('/collectors/dashboard')}
+                        className="flex flex-col items-center gap-1 text-slate-400"
+                    >
+                        <div className="p-2.5 rounded-2xl">
+                            <TrendingUp className="w-5 h-5" />
+                        </div>
+                        <span className="text-[10px] font-black uppercase tracking-widest">Home</span>
                     </button>
-                    <button onClick={() => router.push('/collectors/tokens')} className="flex flex-col items-center gap-1.5 text-slate-500">
-                        <div className="p-2 hover:bg-white/5 rounded-2xl transition-all"><FileText className="w-5 h-5" /></div>
-                        <span className="text-[10px] font-bold uppercase tracking-widest">Tokens</span>
+                    <button
+                        onClick={() => router.push('/collectors/tokens')}
+                        className="flex flex-col items-center gap-1 text-slate-400"
+                    >
+                        <div className="p-2.5 rounded-2xl">
+                            <FileText className="w-5 h-5" />
+                        </div>
+                        <span className="text-[10px] font-black uppercase tracking-widest">Batches</span>
                     </button>
-                    <button onClick={() => router.push('/collectors/payment')} className="flex flex-col items-center gap-1.5 text-slate-500">
-                        <div className="p-2 hover:bg-white/5 rounded-2xl transition-all"><IndianRupee className="w-5 h-5 transition-all" /></div>
-                        <span className="text-[10px] font-bold uppercase tracking-widest">Pay</span>
+                    <button
+                        onClick={() => router.push('/collectors/payment')}
+                        className="flex flex-col items-center gap-1 text-slate-400"
+                    >
+                        <div className="p-2.5 rounded-2xl">
+                            <IndianRupee className="w-5 h-5" />
+                        </div>
+                        <span className="text-[10px] font-black uppercase tracking-widest">Pay</span>
                     </button>
-                    <button onClick={() => router.push('/collectors/history')} className="flex flex-col items-center gap-1.5 text-slate-500 transition-all">
-                        <div className="p-2 hover:bg-white/5 rounded-2xl transition-all"><Clock className="w-5 h-5 transition-all" /></div>
-                        <span className="text-[10px] font-bold uppercase tracking-widest">History</span>
+                    <button
+                        onClick={() => router.push('/collectors/account')}
+                        className="flex flex-col items-center gap-1 text-slate-400"
+                    >
+                        <div className="p-2.5 rounded-2xl">
+                            <Wallet className="w-5 h-5" />
+                        </div>
+                        <span className="text-[10px] font-black uppercase tracking-widest">Account</span>
+                    </button>
+                    <button
+                        onClick={() => router.push('/collectors/history')}
+                        className="flex flex-col items-center gap-1 text-orange-600"
+                    >
+                        <div className="p-2.5 rounded-2xl bg-orange-50 border-2 border-orange-200">
+                            <Clock className="w-5 h-5" />
+                        </div>
+                        <span className="text-[10px] font-black uppercase tracking-widest">History</span>
                     </button>
                 </div>
             </div>

@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 import { startOfDay, startOfWeek, startOfMonth, endOfDay, subDays } from 'date-fns'
 
-// GET /api/reports - Get comprehensive reports
+// GET /api/reports - Get comprehensive batch-based reports
 export async function GET(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
@@ -14,8 +14,8 @@ export async function GET(req: NextRequest) {
 
     const now = new Date()
 
-    // 1. Collection Summary
-    const todayPayments = await prisma.payment.aggregate({
+    // 1. Collection Summary (from batch payments)
+    const todayPayments = await prisma.batchPayment.aggregate({
       where: {
         paymentDate: {
           gte: startOfDay(now),
@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
       _count: true,
     })
 
-    const weekPayments = await prisma.payment.aggregate({
+    const weekPayments = await prisma.batchPayment.aggregate({
       where: {
         paymentDate: {
           gte: startOfWeek(now),
@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
       _count: true,
     })
 
-    const monthPayments = await prisma.payment.aggregate({
+    const monthPayments = await prisma.batchPayment.aggregate({
       where: {
         paymentDate: {
           gte: startOfMonth(now),
@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
       const dayStart = startOfDay(date)
       const dayEnd = endOfDay(date)
 
-      const dayPayments = await prisma.payment.aggregate({
+      const dayPayments = await prisma.batchPayment.aggregate({
         where: {
           paymentDate: {
             gte: dayStart,
@@ -66,18 +66,20 @@ export async function GET(req: NextRequest) {
       })
 
       last7Days.push({
-        date: dayStart,
+        date: dayStart.toISOString(),
         amount: Number(dayPayments._sum.amount || 0),
       })
     }
 
-    // 3. Overdue Tokens with Details
-    const overdueTokens = await prisma.token.findMany({
+    // 3. Overdue Batches with Details
+    const today = startOfDay(now)
+    const overdueBatches = await prisma.tokenBatch.findMany({
       where: {
         status: { in: ['active', 'overdue'] },
-        schedules: {
+        batchSchedules: {
           some: {
             status: 'overdue',
+            scheduleDate: { lt: today },
           },
         },
       },
@@ -91,11 +93,13 @@ export async function GET(req: NextRequest) {
         collector: {
           select: {
             name: true,
+            collectorId: true,
           },
         },
-        schedules: {
+        batchSchedules: {
           where: {
             status: 'overdue',
+            scheduleDate: { lt: today },
           },
           orderBy: {
             scheduleDate: 'asc',
@@ -103,89 +107,136 @@ export async function GET(req: NextRequest) {
         },
       },
       orderBy: {
-        startDate: 'asc',
+        createdAt: 'asc',
       },
       take: 50, // Limit to top 50 overdue
     })
 
-    // Calculate overdue details
-    const overdueWithDetails = overdueTokens.map((token) => {
-      const totalOverdue = token.schedules.reduce((sum, s) => sum + Number(s.totalDue) - Number(s.paidAmount), 0)
-      const oldestSchedule = token.schedules[0]
+    // Calculate overdue details for batches
+    const overdueWithDetails = overdueBatches.map((batch) => {
+      const totalOverdue = batch.batchSchedules.reduce(
+        (sum, s) => sum + Number(s.totalDue) - Number(s.paidAmount) - Number(s.penaltyWaived),
+        0
+      )
+      const oldestSchedule = batch.batchSchedules[0]
       const daysOverdue = oldestSchedule
         ? Math.floor((now.getTime() - new Date(oldestSchedule.scheduleDate).getTime()) / (1000 * 60 * 60 * 24))
         : 0
 
       return {
-        tokenId: token.id,
-        tokenNo: token.tokenNo,
-        customer: token.customer,
-        collector: token.collector,
+        batchId: batch.id,
+        batchNo: batch.batchNo,
+        quantity: batch.quantity,
+        customer: batch.customer,
+        collector: batch.collector,
         totalOverdue,
-        overdueSchedules: token.schedules.length,
+        overdueSchedules: batch.batchSchedules.length,
         daysOverdue,
-        totalAmount: Number(token.totalAmount),
+        totalAmount: Number(batch.totalBatchAmount),
       }
     })
 
-    // 4. Collector Performance
+    // 4. Collector Performance (based on batches)
     const collectors = await prisma.collector.findMany({
       where: { isActive: true },
       include: {
-        tokens: {
+        tokenBatches: {
           where: { status: 'active' },
-          select: { id: true },
-        },
-        payments: {
-          where: {
-            paymentDate: {
-              gte: startOfMonth(now),
-              lte: endOfDay(now),
-            },
+          select: {
+            id: true,
+            quantity: true,
           },
-          select: { amount: true },
         },
       },
     })
 
-    const collectorPerformance = collectors.map((collector) => ({
-      id: collector.id,
-      name: collector.name,
-      collectorId: collector.collectorId,
-      activeTokens: collector.tokens.length,
-      monthlyCollection: collector.payments.reduce((sum, p) => sum + Number(p.amount), 0),
-    }))
+    // Get batch payments for this month grouped by collector
+    const monthlyBatchPayments = await prisma.batchPayment.findMany({
+      where: {
+        paymentDate: {
+          gte: startOfMonth(now),
+          lte: endOfDay(now),
+        },
+      },
+      select: {
+        collectorId: true,
+        amount: true,
+      },
+    })
+
+    // Aggregate payments by collector
+    const paymentsByCollector = monthlyBatchPayments.reduce((acc, payment) => {
+      const collectorId = payment.collectorId
+      if (!acc[collectorId]) {
+        acc[collectorId] = 0
+      }
+      acc[collectorId] += Number(payment.amount)
+      return acc
+    }, {} as Record<number, number>)
+
+    const collectorPerformance = collectors.map((collector) => {
+      const activeTokens = collector.tokenBatches.reduce((sum, b) => sum + b.quantity, 0)
+      const monthlyCollection = paymentsByCollector[collector.id] || 0
+
+      return {
+        id: collector.id,
+        name: collector.name,
+        collectorId: collector.collectorId,
+        activeTokens,
+        monthlyCollection,
+      }
+    })
 
     // Sort by monthly collection
     collectorPerformance.sort((a, b) => b.monthlyCollection - a.monthlyCollection)
 
-    // 5. Token Status Summary
-    const tokenStats = await prisma.token.groupBy({
+    // 5. Batch Status Summary
+    const batchStats = await prisma.tokenBatch.groupBy({
       by: ['status'],
       _count: true,
       _sum: {
         loanAmount: true,
-        totalAmount: true,
+        totalBatchAmount: true,
       },
     })
 
-    const tokenSummary = tokenStats.map((stat) => ({
+    const batchSummary = batchStats.map((stat) => ({
       status: stat.status,
       count: stat._count,
-      totalDisbursed: Number(stat._sum.loanAmount || 0),
-      totalAmount: Number(stat._sum.totalAmount || 0),
+      totalDisbursed: Number(stat._sum.loanAmount || 0) * (stat._count || 1), // Approximate
+      totalAmount: Number(stat._sum.totalBatchAmount || 0),
     }))
 
-    // 6. Overall Stats
-    const totalDisbursed = await prisma.token.aggregate({
-      _sum: { loanAmount: true },
+    // 6. Overall Stats (batch-based)
+    const totalDisbursed = await prisma.tokenBatch.aggregate({
+      _sum: { totalBatchAmount: true },
     })
 
-    const totalCollected = await prisma.payment.aggregate({
+    const totalCollected = await prisma.batchPayment.aggregate({
       _sum: { amount: true },
     })
 
-    const totalOutstanding = Number(totalDisbursed._sum.loanAmount || 0) - Number(totalCollected._sum.amount || 0)
+    // Calculate total outstanding from batch schedules
+    const allBatches = await prisma.tokenBatch.findMany({
+      include: {
+        batchSchedules: {
+          select: {
+            totalDue: true,
+            paidAmount: true,
+            penaltyWaived: true,
+          },
+        },
+      },
+    })
+
+    const totalOutstanding = allBatches.reduce((sum, batch) => {
+      const batchOutstanding = batch.batchSchedules.reduce(
+        (s, schedule) =>
+          s + Number(schedule.totalDue) - Number(schedule.paidAmount) - Number(schedule.penaltyWaived),
+        0
+      )
+      return sum + batchOutstanding
+    }, 0)
 
     return NextResponse.json({
       success: true,
@@ -205,11 +256,11 @@ export async function GET(req: NextRequest) {
           },
         },
         collectionTrend: last7Days,
-        overdueTokens: overdueWithDetails,
+        overdueBatches: overdueWithDetails,
         collectorPerformance,
-        tokenSummary,
+        batchSummary,
         overallStats: {
-          totalDisbursed: Number(totalDisbursed._sum.loanAmount || 0),
+          totalDisbursed: Number(totalDisbursed._sum.totalBatchAmount || 0),
           totalCollected: Number(totalCollected._sum.amount || 0),
           totalOutstanding,
         },

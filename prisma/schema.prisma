@@ -23,8 +23,9 @@ model Customer {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tokens      Token[]
-  assignments CustomerCollectorAssignment[]
+  tokens       Token[]
+  tokenBatches TokenBatch[]
+  assignments  CustomerCollectorAssignment[]
 
   @@index([mobile])
   @@index([isActive])
@@ -48,9 +49,11 @@ model Collector {
   updatedAt     DateTime  @updatedAt
 
   tokens       Token[]
+  tokenBatches TokenBatch[]
   payments     Payment[]
   assignments  CustomerCollectorAssignment[]
   cashDeposits CashDeposit[]
+  account      CollectorAccount?
 
   @@index([mobile])
   @@index([isActive])
@@ -59,11 +62,105 @@ model Collector {
 }
 
 // ============================================
+// TOKEN BATCH TABLE (for clubbed/grouped tokens)
+// ============================================
+model TokenBatch {
+  id               Int         @id @default(autoincrement())
+  batchNo          String      @unique @db.VarChar(50) // BATCH-20260106-0001
+  customerId       Int
+  collectorId      Int
+  quantity         Int         // Number of tokens in this batch
+  loanAmount       Decimal     @db.Decimal(10, 2) // Per token amount
+  totalBatchAmount Decimal     @db.Decimal(10, 2) // Total across all tokens in batch
+  interestType     InterestType
+  interestValue    Decimal     @db.Decimal(10, 2)
+  durationDays     Int
+  dailyInstallment Decimal     @db.Decimal(10, 2) // Per token daily
+  totalDailyAmount Decimal     @db.Decimal(10, 2) // Combined daily for batch
+  startDate        DateTime    @db.Date
+  endDate          DateTime    @db.Date
+  status           TokenStatus @default(active)
+  createdBy        UserType    @default(admin)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  customer          Customer              @relation(fields: [customerId], references: [id])
+  collector         Collector             @relation(fields: [collectorId], references: [id])
+  tokens            Token[]               // Individual tokens in this batch
+  batchSchedules    BatchRepaymentSchedule[]
+  batchPayments     BatchPayment[]
+
+  @@index([batchNo])
+  @@index([customerId])
+  @@index([collectorId])
+  @@index([status])
+  @@map("token_batches")
+}
+
+// ============================================
+// BATCH REPAYMENT SCHEDULE TABLE
+// ============================================
+model BatchRepaymentSchedule {
+  id                Int            @id @default(autoincrement())
+  batchId           Int
+  scheduleDate      DateTime       @db.Date
+  installmentAmount Decimal        @db.Decimal(10, 2) // Combined daily amount for batch
+  penaltyPerToken   Decimal        @default(0) @db.Decimal(10, 2) // Penalty per token
+  totalPenalty      Decimal        @default(0) @db.Decimal(10, 2) // Total penalty (penaltyPerToken * quantity)
+  totalDue          Decimal        @db.Decimal(10, 2) // installmentAmount + totalPenalty
+  paidAmount        Decimal        @default(0) @db.Decimal(10, 2)
+  penaltyWaived     Decimal        @default(0) @db.Decimal(10, 2) // Waived penalty amount
+  paymentDate       DateTime?      @db.Date
+  status            ScheduleStatus @default(pending)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  batch    TokenBatch      @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  payments BatchPayment[]
+
+  @@index([batchId])
+  @@index([scheduleDate])
+  @@index([status])
+  @@index([batchId, scheduleDate])
+  @@map("batch_repayment_schedule")
+}
+
+// ============================================
+// BATCH PAYMENTS TABLE
+// ============================================
+model BatchPayment {
+  id              Int         @id @default(autoincrement())
+  batchId         Int
+  scheduleId      Int
+  collectorId     Int
+  amount          Decimal     @db.Decimal(10, 2)
+  penaltyWaived   Decimal     @default(0) @db.Decimal(10, 2) // Amount of penalty waived
+  paymentMode     PaymentMode @default(cash)
+  paymentDate     DateTime    @db.Date
+  remarks         String?     @db.Text
+  photoUrl        String?     @db.LongText
+  isSynced        Boolean     @default(false)
+  createdBy       UserType    @default(admin)
+  createdAt       DateTime    @default(now())
+
+  batch    TokenBatch               @relation(fields: [batchId], references: [id])
+  schedule BatchRepaymentSchedule   @relation(fields: [scheduleId], references: [id])
+
+  @@index([batchId])
+  @@index([scheduleId])
+  @@index([paymentDate])
+  @@index([collectorId])
+  @@index([isSynced])
+  @@map("batch_payments")
+}
+
+// ============================================
 // TOKENS/LOANS TABLE
 // ============================================
 model Token {
   id               Int         @id @default(autoincrement())
   tokenNo          String      @unique @db.VarChar(50)
+  batchId          Int?        // Links to batch if part of a batch
   customerId       Int
   collectorId      Int
   loanAmount       Decimal     @db.Decimal(10, 2)
@@ -75,15 +172,19 @@ model Token {
   startDate        DateTime    @db.Date
   endDate          DateTime    @db.Date
   status           TokenStatus @default(active)
+  createdBy        UserType    @default(admin)
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
 
-  customer  Customer            @relation(fields: [customerId], references: [id])
-  collector Collector           @relation(fields: [collectorId], references: [id])
-  schedules RepaymentSchedule[]
-  payments  Payment[]
+  batch              TokenBatch?         @relation(fields: [batchId], references: [id])
+  customer           Customer            @relation(fields: [customerId], references: [id])
+  collector          Collector           @relation(fields: [collectorId], references: [id])
+  schedules          RepaymentSchedule[]
+  payments           Payment[]
+  paymentAllocations PaymentAllocation[]
 
   @@index([tokenNo])
+  @@index([batchId])
   @@index([customerId])
   @@index([collectorId])
   @@index([status])
@@ -119,8 +220,9 @@ model RepaymentSchedule {
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
 
-  token    Token     @relation(fields: [tokenId], references: [id], onDelete: Cascade)
-  payments Payment[]
+  token              Token               @relation(fields: [tokenId], references: [id], onDelete: Cascade)
+  payments           Payment[]
+  paymentAllocations PaymentAllocation[]
 
   @@index([tokenId])
   @@index([scheduleDate])
@@ -140,27 +242,54 @@ enum ScheduleStatus {
 // PAYMENTS TABLE
 // ============================================
 model Payment {
-  id          Int         @id @default(autoincrement())
-  tokenId     Int
-  scheduleId  Int
-  collectorId Int
-  amount      Decimal     @db.Decimal(10, 2)
-  paymentMode PaymentMode @default(cash)
-  paymentDate DateTime    @db.Date
-  remarks     String?     @db.Text
-  photoUrl    String?     @db.LongText
-  isSynced    Boolean     @default(false)
-  createdAt   DateTime    @default(now())
+  id            Int         @id @default(autoincrement())
+  tokenId       Int?        // Made optional for multi-token payments
+  scheduleId    Int?        // Made optional for multi-token payments
+  collectorId   Int
+  customerId    Int?        // Added to support customer-level payments
+  amount        Decimal     @db.Decimal(10, 2)
+  paymentMode   PaymentMode @default(cash)
+  paymentDate   DateTime    @db.Date
+  remarks       String?     @db.Text
+  photoUrl      String?     @db.LongText
+  isSynced      Boolean     @default(false)
+  isMultiToken  Boolean     @default(false) // Flag for multi-token payments
+  createdBy     UserType    @default(admin) // Track who created the payment
+  createdAt     DateTime    @default(now())
 
-  token     Token             @relation(fields: [tokenId], references: [id])
-  schedule  RepaymentSchedule @relation(fields: [scheduleId], references: [id])
-  collector Collector         @relation(fields: [collectorId], references: [id])
+  token       Token?              @relation(fields: [tokenId], references: [id])
+  schedule    RepaymentSchedule?  @relation(fields: [scheduleId], references: [id])
+  collector   Collector           @relation(fields: [collectorId], references: [id])
+  allocations PaymentAllocation[] // Multi-token payment allocations
 
   @@index([tokenId])
+  @@index([customerId])
   @@index([paymentDate])
   @@index([collectorId])
   @@index([isSynced])
+  @@index([isMultiToken])
   @@map("payments")
+}
+
+// ============================================
+// PAYMENT ALLOCATION TABLE (for multi-token payments)
+// ============================================
+model PaymentAllocation {
+  id         Int      @id @default(autoincrement())
+  paymentId  Int
+  tokenId    Int
+  scheduleId Int
+  amount     Decimal  @db.Decimal(10, 2)
+  createdAt  DateTime @default(now())
+
+  payment  Payment           @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  token    Token             @relation(fields: [tokenId], references: [id])
+  schedule RepaymentSchedule @relation(fields: [scheduleId], references: [id])
+
+  @@index([paymentId])
+  @@index([tokenId])
+  @@index([scheduleId])
+  @@map("payment_allocations")
 }
 
 enum PaymentMode {
@@ -207,6 +336,7 @@ model AdminUser {
 
   verifiedDeposits CashDeposit[] @relation("VerifiedBy")
   systemLogs       SystemLog[]
+  account          AdminAccount?
 
   @@index([username])
   @@index([role])
@@ -296,4 +426,88 @@ enum UserType {
   admin
   collector
   director
+}
+
+// ============================================
+// COLLECTOR ACCOUNT TABLE
+// ============================================
+model CollectorAccount {
+  id            Int       @id @default(autoincrement())
+  collectorId   Int       @unique
+  currentBalance Decimal  @default(0) @db.Decimal(10, 2)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  collector     Collector @relation(fields: [collectorId], references: [id], onDelete: Cascade)
+  transactions  CollectorAccountTransaction[]
+
+  @@map("collector_accounts")
+}
+
+// ============================================
+// COLLECTOR ACCOUNT TRANSACTION TABLE
+// ============================================
+model CollectorAccountTransaction {
+  id            Int            @id @default(autoincrement())
+  collectorAccountId Int
+  transactionType String       @db.VarChar(20) // credit, debit
+  amount        Decimal        @db.Decimal(10, 2)
+  balanceAfter  Decimal        @db.Decimal(10, 2)
+  referenceType String?        @db.VarChar(50) // payment, token_creation, admin_credit, etc.
+  referenceId   Int?           // ID of related entity
+  description   String?        @db.Text
+  createdBy     Int?           // User ID
+  createdByType UserType?      // admin or collector
+  transactionDate DateTime     @default(now())
+  createdAt     DateTime       @default(now())
+
+  collectorAccount CollectorAccount @relation(fields: [collectorAccountId], references: [id], onDelete: Cascade)
+
+  @@index([collectorAccountId])
+  @@index([transactionDate])
+  @@index([transactionType])
+  @@index([referenceType, referenceId])
+  @@map("collector_account_transactions")
+}
+
+// ============================================
+// ADMIN ACCOUNT TABLE
+// ============================================
+model AdminAccount {
+  id            Int       @id @default(autoincrement())
+  adminId       Int       @unique
+  currentBalance Decimal  @default(0) @db.Decimal(10, 2)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  admin         AdminUser @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  transactions  AdminAccountTransaction[]
+
+  @@map("admin_accounts")
+}
+
+// ============================================
+// ADMIN ACCOUNT TRANSACTION TABLE
+// ============================================
+model AdminAccountTransaction {
+  id            Int            @id @default(autoincrement())
+  adminAccountId Int
+  transactionType String       @db.VarChar(20) // credit, debit
+  amount        Decimal        @db.Decimal(10, 2)
+  balanceAfter  Decimal        @db.Decimal(10, 2)
+  referenceType String?        @db.VarChar(50) // payment, token_creation, manual_add, collector_credit, etc.
+  referenceId   Int?           // ID of related entity
+  description   String?        @db.Text
+  createdBy     Int?           // User ID
+  createdByType UserType?      // admin or collector
+  transactionDate DateTime     @default(now())
+  createdAt     DateTime       @default(now())
+
+  adminAccount AdminAccount @relation(fields: [adminAccountId], references: [id], onDelete: Cascade)
+
+  @@index([adminAccountId])
+  @@index([transactionDate])
+  @@index([transactionType])
+  @@index([referenceType, referenceId])
+  @@map("admin_account_transactions")
 }

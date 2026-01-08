@@ -114,11 +114,17 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
-    const { customerId, collectorId, loanAmount, interestType, interestValue, durationDays, startDate } = body
+    const { customerId, collectorId, loanAmount, interestType, interestValue, durationDays, startDate, quantity } = body
 
     // Validation
     if (!customerId || !collectorId || !loanAmount || !interestType || interestValue === undefined || !durationDays) {
       return NextResponse.json({ error: 'All fields are required' }, { status: 400 })
+    }
+
+    // Validate quantity
+    const tokenQuantity = quantity ? parseInt(quantity) : 1
+    if (tokenQuantity < 1 || tokenQuantity > 50) {
+      return NextResponse.json({ error: 'Quantity must be between 1 and 50' }, { status: 400 })
     }
 
     // Validate customer exists and is active
@@ -157,7 +163,7 @@ export async function POST(req: NextRequest) {
       startDate: parsedStartDate,
     })
 
-    // Generate token number
+    // Get current token count for sequential numbering
     const tokensToday = await prisma.token.count({
       where: {
         createdAt: {
@@ -167,54 +173,63 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    const tokenNo = generateTokenNumber(tokensToday + 1)
+    // Create multiple tokens in transaction (based on quantity)
+    const createdTokens = await prisma.$transaction(async (tx) => {
+      const tokens = []
 
-    // Create token in transaction
-    const token = await prisma.$transaction(async (tx) => {
-      // Create token
-      const newToken = await tx.token.create({
-        data: {
-          tokenNo,
-          customerId: parseInt(customerId),
-          collectorId: parseInt(collectorId),
-          loanAmount: parseFloat(loanAmount),
-          interestType,
-          interestValue: parseFloat(interestValue),
-          totalAmount: calculations.totalAmount,
-          durationDays: parseInt(durationDays),
-          dailyInstallment: calculations.dailyInstallment,
-          startDate: parsedStartDate,
-          endDate: calculations.endDate,
-          status: 'active',
-        },
-      })
+      for (let q = 0; q < tokenQuantity; q++) {
+        // Generate unique token number for each
+        const tokenNo = generateTokenNumber(tokensToday + q + 1)
 
-      // Create repayment schedule
-      const schedules = []
-      for (let i = 0; i < parseInt(durationDays); i++) {
-        const scheduleDate = addDays(parsedStartDate, i)
-        schedules.push({
-          tokenId: newToken.id,
-          scheduleDate,
-          installmentAmount: calculations.dailyInstallment,
-          penaltyAmount: 0,
-          totalDue: calculations.dailyInstallment,
-          paidAmount: 0,
-          status: 'pending' as const,
+        // Create token
+        const newToken = await tx.token.create({
+          data: {
+            tokenNo,
+            customerId: parseInt(customerId),
+            collectorId: parseInt(collectorId),
+            loanAmount: parseFloat(loanAmount),
+            interestType,
+            interestValue: parseFloat(interestValue),
+            totalAmount: calculations.totalAmount,
+            durationDays: parseInt(durationDays),
+            dailyInstallment: calculations.dailyInstallment,
+            startDate: parsedStartDate,
+            endDate: calculations.endDate,
+            status: 'active',
+            createdBy: 'admin',
+          },
         })
+
+        // Create repayment schedule for this token
+        const schedules = []
+        for (let i = 0; i < parseInt(durationDays); i++) {
+          const scheduleDate = addDays(parsedStartDate, i)
+          schedules.push({
+            tokenId: newToken.id,
+            scheduleDate,
+            installmentAmount: calculations.dailyInstallment,
+            penaltyAmount: 0,
+            totalDue: calculations.dailyInstallment,
+            paidAmount: 0,
+            status: 'pending' as const,
+          })
+        }
+
+        await tx.repaymentSchedule.createMany({
+          data: schedules,
+        })
+
+        tokens.push(newToken)
       }
 
-      await tx.repaymentSchedule.createMany({
-        data: schedules,
-      })
-
-      return newToken
+      return tokens
     })
 
     return NextResponse.json({
       success: true,
-      data: token,
-      message: 'Token created successfully',
+      data: createdTokens,
+      message: `${tokenQuantity} token(s) created successfully`,
+      count: tokenQuantity
     })
   } catch (error) {
     console.error('Token POST Error:', error)

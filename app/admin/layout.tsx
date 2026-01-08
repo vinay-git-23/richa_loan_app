@@ -1,21 +1,22 @@
 'use client'
 
 import { useSession, signOut } from 'next-auth/react'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useState } from 'react'
-import { LayoutDashboard, Users, UserCog, FileText, IndianRupee, BarChart, Settings, LogOut, Menu, X, ShieldCheck, ChevronRight, AlertTriangle, Link as LinkIcon, Clock, Wallet } from 'lucide-react'
+import { LayoutDashboard, Users, UserCog, FileText, IndianRupee, BarChart, Settings, LogOut, Menu, X, ShieldCheck, ChevronRight, AlertTriangle, Clock, Wallet } from 'lucide-react'
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
     const { data: session } = useSession()
     const pathname = usePathname()
+    const router = useRouter()
     const [sidebarOpen, setSidebarOpen] = useState(false)
+    const [loggingOut, setLoggingOut] = useState(false)
 
     const navigation = [
         { name: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard, color: 'from-orange-600 to-amber-600' },
         { name: 'Customers', href: '/admin/customers', icon: Users, color: 'from-orange-500 to-orange-600' },
         { name: 'Collectors', href: '/admin/collectors', icon: UserCog, color: 'from-zinc-600 to-slate-700' },
-        { name: 'Assignments', href: '/admin/assignments', icon: LinkIcon, color: 'from-blue-500 to-indigo-600' },
         { name: 'Tokens', href: '/admin/tokens', icon: FileText, color: 'from-amber-500 to-orange-600' },
         { name: 'Payments', href: '/admin/payments', icon: IndianRupee, color: 'from-orange-600 to-red-600' },
         { name: 'Cash Mgmt', href: '/admin/cash-management', icon: Wallet, color: 'from-emerald-600 to-teal-600' },
@@ -98,11 +99,28 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                             </div>
                         </div>
                         <button
-                            onClick={() => signOut({ callbackUrl: '/login' })}
-                            className="flex items-center justify-center gap-2 w-full py-2.5 px-4 bg-slate-800 hover:bg-red-600 text-slate-400 hover:text-white border border-slate-700 hover:border-red-600 rounded-lg transition-all duration-200 font-bold text-xs uppercase tracking-widest active:scale-95"
+                            onClick={async () => {
+                                setLoggingOut(true)
+                                setSidebarOpen(false)
+                                // Immediate redirect for better UX
+                                router.push('/login')
+                                // Sign out in background (non-blocking)
+                                signOut({ redirect: false, callbackUrl: '/login' }).catch(() => {})
+                            }}
+                            disabled={loggingOut}
+                            className="flex items-center justify-center gap-2 w-full py-2.5 px-4 bg-slate-800 hover:bg-red-600 text-slate-400 hover:text-white border border-slate-700 hover:border-red-600 rounded-lg transition-all duration-200 font-bold text-xs uppercase tracking-widest active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            <LogOut className="w-4 h-4" />
-                            <span>Logout</span>
+                            {loggingOut ? (
+                                <>
+                                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    <span>Logging out...</span>
+                                </>
+                            ) : (
+                                <>
+                                    <LogOut className="w-4 h-4" />
+                                    <span>Logout</span>
+                                </>
+                            )}
                         </button>
                     </div>
                 </div>

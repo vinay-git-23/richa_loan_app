@@ -3,11 +3,11 @@
 import { useState } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { Building2, Users, Eye, EyeOff, Loader2 } from 'lucide-react'
+import { Building2, Users, Eye, EyeOff, Loader2, Smartphone, Key } from 'lucide-react'
 
 export default function LoginPage() {
   const router = useRouter()
-  const [loginType, setLoginType] = useState<'admin' | 'collector'>('admin')
+  const [loginType, setLoginType] = useState<'admin' | 'collector'>('collector')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -19,7 +19,7 @@ export default function LoginPage() {
   })
 
   const [collectorForm, setCollectorForm] = useState({
-    mobile: '',
+    loginId: '',
     password: '',
   })
 
@@ -38,7 +38,6 @@ export default function LoginPage() {
       if (result?.error) {
         setError('Invalid username or password')
       } else {
-        // Redirect based on role
         router.push('/admin/dashboard')
         router.refresh()
       }
@@ -55,24 +54,19 @@ export default function LoginPage() {
     setError('')
 
     try {
-      console.log('Client: Attempting login with', collectorForm.mobile) // DEBUG
       const result = await signIn('collector-login', {
-        mobile: collectorForm.mobile,
+        loginId: collectorForm.loginId,
         password: collectorForm.password,
         redirect: false,
       })
-      console.log('Client: Login Result', result) // DEBUG
 
       if (result?.error) {
-        console.error('Client: Login Error', result.error) // DEBUG
-        setError(`Error: ${result.error}`)
+        setError('Invalid login ID/Mobile or password')
       } else {
-        console.log('Collectors Client: Success, Redirecting...') // DEBUG
         router.push('/collectors/dashboard')
         router.refresh()
       }
     } catch (err) {
-      console.error('Client: Catch Error', err) // DEBUG
       setError('Login failed. Please try again.')
     } finally {
       setLoading(false)
@@ -80,37 +74,39 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-50 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-slate-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         {/* Logo & Title */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-2xl mb-4">
-            <Building2 className="w-8 h-8 text-white" />
+          <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-orange-600 to-orange-500 rounded-3xl mb-4 shadow-xl shadow-orange-500/30">
+            <Building2 className="w-10 h-10 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-gray-900">Finance Manager</h1>
-          <p className="text-gray-600 mt-2">Collection Tracking System</p>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Finance Manager</h1>
+          <p className="text-slate-600 mt-2 font-medium">Collection Tracking System</p>
         </div>
 
-        {/* Login Card */}
-        <div className="bg-white rounded-2xl shadow-xl p-8">
+        {/* Login Card - Mobile Native Style */}
+        <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden">
           {/* User Type Toggle */}
-          <div className="flex gap-2 p-1 bg-gray-100 rounded-lg mb-6">
+          <div className="flex gap-2 p-2 bg-slate-50 m-4 rounded-2xl">
             <button
               onClick={() => setLoginType('admin')}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-md font-medium transition-all ${loginType === 'admin'
-                ? 'bg-white text-blue-600 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-                }`}
+              className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-sm transition-all ${
+                loginType === 'admin'
+                  ? 'bg-white text-orange-600 shadow-md'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
             >
               <Building2 className="w-4 h-4" />
               Admin
             </button>
             <button
               onClick={() => setLoginType('collector')}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-md font-medium transition-all ${loginType === 'collector'
-                ? 'bg-white text-blue-600 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-                }`}
+              className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-sm transition-all ${
+                loginType === 'collector'
+                  ? 'bg-white text-orange-600 shadow-md'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
             >
               <Users className="w-4 h-4" />
               Collector
@@ -119,27 +115,23 @@ export default function LoginPage() {
 
           {/* Error Message */}
           {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm break-all">
+            <div className="mx-4 mb-4 p-4 bg-red-50 border border-red-200 rounded-2xl text-red-700 text-sm font-medium">
               {error}
-              {/* DEBUG INFO */}
-              <div className="text-xs text-gray-500 mt-1 font-mono">
-                Check console for details.
-              </div>
             </div>
           )}
 
           {/* Admin Login Form */}
           {loginType === 'admin' && (
-            <form onSubmit={handleAdminLogin} className="space-y-4">
+            <form onSubmit={handleAdminLogin} className="px-6 pb-8 space-y-5">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                <label className="block text-sm font-bold text-slate-700 mb-2">
                   Username
                 </label>
                 <input
                   type="text"
                   value={adminForm.username}
                   onChange={(e) => setAdminForm({ ...adminForm, username: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
+                  className="w-full px-4 py-3.5 bg-slate-50 border-2 border-slate-200 rounded-2xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition font-medium"
                   placeholder="Enter username"
                   required
                   disabled={loading}
@@ -147,7 +139,7 @@ export default function LoginPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                <label className="block text-sm font-bold text-slate-700 mb-2">
                   Password
                 </label>
                 <div className="relative">
@@ -155,7 +147,7 @@ export default function LoginPage() {
                     type={showPassword ? 'text' : 'password'}
                     value={adminForm.password}
                     onChange={(e) => setAdminForm({ ...adminForm, password: e.target.value })}
-                    className="w-full px-4 py-2.5 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
+                    className="w-full px-4 py-3.5 pr-12 bg-slate-50 border-2 border-slate-200 rounded-2xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition font-medium"
                     placeholder="Enter password"
                     required
                     disabled={loading}
@@ -163,7 +155,7 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                   >
                     {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>
@@ -173,7 +165,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600 text-white font-bold py-4 rounded-2xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-orange-500/30 active:scale-95"
               >
                 {loading ? (
                   <>
@@ -187,27 +179,35 @@ export default function LoginPage() {
             </form>
           )}
 
-          {/* Collector Login Form */}
+          {/* Collector Login Form - Mobile Native Style */}
           {loginType === 'collector' && (
-            <form onSubmit={handleCollectorLogin} className="space-y-4">
+            <form onSubmit={handleCollectorLogin} className="px-6 pb-8 space-y-5">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Mobile Number
+                <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center gap-2">
+                  <Key className="w-4 h-4 text-orange-600" />
+                  Login ID or Mobile
                 </label>
-                <input
-                  type="tel"
-                  value={collectorForm.mobile}
-                  onChange={(e) => setCollectorForm({ ...collectorForm, mobile: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
-                  placeholder="Enter mobile number"
-                  required
-                  disabled={loading}
-                  maxLength={10}
-                />
+                <div className="relative">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2">
+                    <Smartphone className="w-5 h-5 text-slate-400" />
+                  </div>
+                  <input
+                    type="text"
+                    value={collectorForm.loginId}
+                    onChange={(e) => setCollectorForm({ ...collectorForm, loginId: e.target.value })}
+                    className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border-2 border-slate-200 rounded-2xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition font-medium"
+                    placeholder="Collector ID or Mobile Number"
+                    required
+                    disabled={loading}
+                  />
+                </div>
+                <p className="text-xs text-slate-500 mt-2 font-medium">
+                  Enter your Collector ID or registered mobile number
+                </p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                <label className="block text-sm font-bold text-slate-700 mb-2">
                   Password
                 </label>
                 <div className="relative">
@@ -217,7 +217,7 @@ export default function LoginPage() {
                     onChange={(e) =>
                       setCollectorForm({ ...collectorForm, password: e.target.value })
                     }
-                    className="w-full px-4 py-2.5 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
+                    className="w-full px-4 py-3.5 pr-12 bg-slate-50 border-2 border-slate-200 rounded-2xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition font-medium"
                     placeholder="Enter password"
                     required
                     disabled={loading}
@@ -225,7 +225,7 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                   >
                     {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>
@@ -235,7 +235,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600 text-white font-bold py-4 rounded-2xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-orange-500/30 active:scale-95"
               >
                 {loading ? (
                   <>
@@ -248,11 +248,10 @@ export default function LoginPage() {
               </button>
             </form>
           )}
-
         </div>
 
         {/* Footer */}
-        <div className="text-center mt-6 text-sm text-gray-500">
+        <div className="text-center mt-8 text-sm text-slate-500 font-medium">
           © 2024 Finance Manager. All rights reserved.
         </div>
       </div>

@@ -32,13 +32,18 @@ interface CollectorDetails {
 
 interface Transaction {
     id: number
+    transactionType?: 'credit' | 'debit'
     amount: number
-    depositDate: string
-    status: string
+    balanceAfter?: number
+    description?: string | null
+    referenceType?: string | null
+    transactionDate?: string
+    depositDate?: string
+    status?: string
     createdAt: string
-    verifiedBy: number | null
-    verificationDate: string | null
-    receiptUrl: string | null
+    verifiedBy?: number | null
+    verificationDate?: string | null
+    receiptUrl?: string | null
     verifier?: {
         username: string
     } | null
@@ -60,20 +65,59 @@ export default function CollectorAccountDetailPage() {
     const fetchData = async () => {
         setLoading(true)
         try {
-            const [collectorRes, transactionsRes] = await Promise.all([
+            const [collectorRes, transactionsRes, accountTransactionsRes] = await Promise.all([
                 fetch(`/api/admin/collector-accounts?id=${collectorId}`),
-                fetch(`/api/admin/collector-transactions/${collectorId}`)
+                fetch(`/api/admin/collector-transactions/${collectorId}`),
+                fetch(`/api/admin/collector-accounts/${collectorId}/transactions`).catch(() => ({ json: async () => ({ success: true, data: [] }) }))
             ])
 
             const collectorData = await collectorRes.json()
             const transactionsData = await transactionsRes.json()
+            const accountTransactionsData = await accountTransactionsRes.json()
 
             if (collectorData.success) {
                 setCollector(collectorData.data)
             }
-            if (transactionsData.success) {
-                setTransactions(transactionsData.data)
+            
+            // Combine both old cash deposits and new account transactions
+            const allTransactions: Transaction[] = []
+            
+            if (transactionsData.success && transactionsData.data) {
+                allTransactions.push(...transactionsData.data.map((t: any) => ({
+                    id: t.id,
+                    amount: Number(t.amount || 0),
+                    depositDate: t.depositDate,
+                    status: t.status,
+                    createdAt: t.createdAt,
+                    verifiedBy: t.verifiedBy,
+                    verificationDate: t.verificationDate,
+                    receiptUrl: t.receiptUrl,
+                    verifier: t.verifier
+                })))
             }
+            
+            if (accountTransactionsData.success && accountTransactionsData.data?.transactions) {
+                allTransactions.push(...accountTransactionsData.data.transactions.map((t: any) => ({
+                    id: t.id + 1000000, // Offset to avoid ID conflicts
+                    transactionType: t.transactionType,
+                    amount: Number(t.amount || 0),
+                    balanceAfter: Number(t.balanceAfter || 0),
+                    description: t.description,
+                    referenceType: t.referenceType,
+                    transactionDate: t.transactionDate,
+                    createdAt: t.createdAt,
+                    status: 'verified' // Account transactions are always verified
+                })))
+            }
+            
+            // Sort by date (newest first)
+            allTransactions.sort((a, b) => {
+                const dateA = new Date(a.transactionDate || a.depositDate || a.createdAt).getTime()
+                const dateB = new Date(b.transactionDate || b.depositDate || b.createdAt).getTime()
+                return dateB - dateA
+            })
+            
+            setTransactions(allTransactions)
         } catch (error) {
             console.error('Failed to fetch data:', error)
         } finally {
@@ -198,8 +242,14 @@ export default function CollectorAccountDetailPage() {
                 ) : (
                     <div className="p-6 space-y-4">
                         {transactions.map((transaction) => {
-                            const isCredit = transaction.amount > 0
-                            const isAdminTransaction = transaction.receiptUrl?.startsWith('Admin')
+                            // Handle both old cash deposits and new account transactions
+                            const isAccountTransaction = transaction.transactionType !== undefined
+                            const isCredit = isAccountTransaction 
+                                ? transaction.transactionType === 'credit'
+                                : transaction.amount > 0
+                            const isAdminTransaction = transaction.receiptUrl?.startsWith('Admin') || transaction.referenceType === 'admin_credit'
+                            const transactionDate = transaction.transactionDate || transaction.depositDate || transaction.createdAt
+                            const status = transaction.status || (isAccountTransaction ? 'verified' : 'pending')
 
                             return (
                                 <div
@@ -210,22 +260,22 @@ export default function CollectorAccountDetailPage() {
                                         <div className="flex items-start gap-4">
                                             <div
                                                 className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                                                    transaction.status === 'verified'
+                                                    status === 'verified'
                                                         ? isCredit
                                                             ? 'bg-emerald-50 border border-emerald-100'
                                                             : 'bg-rose-50 border border-rose-100'
-                                                        : transaction.status === 'rejected'
+                                                        : status === 'rejected'
                                                         ? 'bg-red-50 border border-red-100'
                                                         : 'bg-amber-50 border border-amber-100'
                                                 }`}
                                             >
-                                                {transaction.status === 'verified' ? (
+                                                {status === 'verified' ? (
                                                     isCredit ? (
                                                         <TrendingUp className="w-6 h-6 text-emerald-600" />
                                                     ) : (
                                                         <TrendingDown className="w-6 h-6 text-rose-600" />
                                                     )
-                                                ) : transaction.status === 'rejected' ? (
+                                                ) : status === 'rejected' ? (
                                                     <XCircle className="w-6 h-6 text-red-600" />
                                                 ) : (
                                                     <Clock className="w-6 h-6 text-amber-600" />
@@ -234,29 +284,39 @@ export default function CollectorAccountDetailPage() {
                                             <div>
                                                 <p
                                                     className={`text-2xl font-black mb-1 ${
-                                                        transaction.status === 'verified'
+                                                        status === 'verified'
                                                             ? isCredit
                                                                 ? 'text-emerald-600'
                                                                 : 'text-rose-600'
                                                             : 'text-slate-900'
                                                     }`}
                                                 >
-                                                    {isCredit ? '+' : ''}{formatCurrency(transaction.amount)}
+                                                    {isCredit ? '+' : '-'}{formatCurrency(Math.abs(transaction.amount))}
                                                 </p>
                                                 <div className="flex items-center gap-2 text-xs text-slate-500 mb-2">
                                                     <Calendar className="w-3 h-3" />
-                                                    {format(new Date(transaction.depositDate), 'dd MMM yyyy')}
+                                                    {format(new Date(transactionDate), 'dd MMM yyyy, hh:mm a')}
                                                 </div>
-                                                {transaction.receiptUrl && (
+                                                {transaction.description && (
+                                                    <p className="text-xs text-slate-600 font-medium max-w-md mb-1">
+                                                        {transaction.description}
+                                                    </p>
+                                                )}
+                                                {transaction.receiptUrl && !isAccountTransaction && (
                                                     <p className="text-xs text-slate-600 font-medium max-w-md">
                                                         {transaction.receiptUrl}
                                                     </p>
                                                 )}
-                                                {transaction.status === 'verified' && transaction.verifier && (
+                                                {status === 'verified' && transaction.verifier && (
                                                     <p className="text-xs text-slate-400 mt-1">
                                                         Verified by {transaction.verifier.username} on{' '}
                                                         {transaction.verificationDate &&
                                                             format(new Date(transaction.verificationDate), 'dd MMM yyyy')}
+                                                    </p>
+                                                )}
+                                                {transaction.balanceAfter !== undefined && (
+                                                    <p className="text-xs text-slate-400 mt-1">
+                                                        Balance: {formatCurrency(transaction.balanceAfter)}
                                                     </p>
                                                 )}
                                             </div>
@@ -264,16 +324,16 @@ export default function CollectorAccountDetailPage() {
                                         <div className="text-right">
                                             <span
                                                 className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${
-                                                    transaction.status === 'verified'
+                                                    status === 'verified'
                                                         ? 'bg-emerald-50 text-emerald-600 border border-emerald-100'
-                                                        : transaction.status === 'rejected'
+                                                        : status === 'rejected'
                                                         ? 'bg-red-50 text-red-600 border border-red-100'
                                                         : 'bg-amber-50 text-amber-600 border border-amber-100'
                                                 }`}
                                             >
-                                                {transaction.status === 'verified'
+                                                {status === 'verified'
                                                     ? 'Verified'
-                                                    : transaction.status === 'rejected'
+                                                    : status === 'rejected'
                                                     ? 'Rejected'
                                                     : 'Pending'}
                                             </span>
@@ -281,6 +341,13 @@ export default function CollectorAccountDetailPage() {
                                                 <div className="mt-2">
                                                     <span className="inline-flex items-center px-2 py-1 rounded-full text-[10px] font-bold bg-blue-50 text-blue-600 border border-blue-100 uppercase tracking-wider">
                                                         Admin Entry
+                                                    </span>
+                                                </div>
+                                            )}
+                                            {isAccountTransaction && transaction.referenceType && (
+                                                <div className="mt-2">
+                                                    <span className="inline-flex items-center px-2 py-1 rounded-full text-[10px] font-bold bg-purple-50 text-purple-600 border border-purple-100 uppercase tracking-wider">
+                                                        {transaction.referenceType.replace('_', ' ')}
                                                     </span>
                                                 </div>
                                             )}

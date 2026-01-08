@@ -406,12 +406,26 @@ export default function SettingsPage() {
             <div className="flex flex-col sm:flex-row items-center justify-center gap-8 pt-8 border-t border-slate-200 text-slate-400">
                 <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest">
                     <Calendar className="w-4 h-4" />
-                    Account Created: {format(new Date(settings.createdAt), 'dd MMM yyyy')}
+                    Account Created: {settings.createdAt ? (() => {
+                        try {
+                            const date = new Date(settings.createdAt)
+                            return isNaN(date.getTime()) ? 'N/A' : format(date, 'dd MMM yyyy')
+                        } catch {
+                            return 'N/A'
+                        }
+                    })() : 'N/A'}
                 </div>
                 <div className="hidden sm:block w-1 h-1 bg-slate-300 rounded-full"></div>
                 <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest">
                     <Activity className="w-4 h-4" />
-                    Last Login: {settings.lastLogin ? format(new Date(settings.lastLogin), 'dd MMM yyyy HH:mm') : 'First session'}
+                    Last Login: {settings.lastLogin ? (() => {
+                        try {
+                            const date = new Date(settings.lastLogin)
+                            return isNaN(date.getTime()) ? 'First session' : format(date, 'dd MMM yyyy HH:mm')
+                        } catch {
+                            return 'First session'
+                        }
+                    })() : 'First session'}
                 </div>
             </div>
         </div>

@@ -56,18 +56,21 @@ export const authOptions: NextAuthOptions = {
       id: 'collector-login',
       name: 'Collector Login',
       credentials: {
-        mobile: { label: 'Mobile', type: 'text' },
+        loginId: { label: 'Login ID or Mobile', type: 'text' },
         password: { label: 'Password', type: 'password' },
       },
       async authorize(credentials) {
-        if (!credentials?.mobile || !credentials?.password) {
-          throw new Error('Mobile and password required')
+        if (!credentials?.loginId || !credentials?.password) {
+          throw new Error('Login ID/Mobile and password required')
         }
 
-        // Find collector
+        // Find collector by collectorId OR mobile
         const collector = await prisma.collector.findFirst({
           where: {
-            mobile: credentials.mobile,
+            OR: [
+              { collectorId: credentials.loginId },
+              { mobile: credentials.loginId },
+            ],
             isActive: true,
           },
         })

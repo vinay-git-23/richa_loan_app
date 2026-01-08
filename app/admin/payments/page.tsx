@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Search, Plus, Calendar, IndianRupee, CreditCard, Smartphone, Building, X, FileText, ChevronRight, UserCog, AlertCircle, TrendingUp, Activity, Zap, CheckCircle2, Printer } from 'lucide-react'
+import { Search, Plus, Calendar, IndianRupee, CreditCard, Smartphone, Building, X, FileText, ChevronRight, UserCog, AlertCircle, TrendingUp, Activity, Zap, CheckCircle2, Printer, Clock, AlertTriangle, History, Eye } from 'lucide-react'
 import { formatCurrency } from '@/utils/calculations'
 import { format } from 'date-fns'
 
@@ -11,8 +11,17 @@ interface Payment {
   paymentDate: string
   paymentMode: string
   remarks: string | null
-  token: {
+  penaltyWaived?: number
+  token?: {
     tokenNo: string
+    customer: {
+      name: string
+      mobile: string
+    }
+  }
+  batch?: {
+    batchNo: string
+    quantity: number
     customer: {
       name: string
       mobile: string
@@ -22,60 +31,87 @@ interface Payment {
     name: string
   }
   photoUrl: string | null
-}
-
-interface Token {
-  id: number
-  tokenNo: string
-  customerId: number
-  customer: {
-    name: string
-    mobile: string
-  }
-  schedules: Array<{
-    id: number
+  schedule?: {
     scheduleDate: string
-    installmentAmount: number
-    penaltyAmount: number
-    totalDue: number
-    paidAmount: number
-    status: string
-  }>
-  dailyInstallment: number
-  totalAmount: number
+    totalPenalty?: number
+  }
 }
 
-interface Collector {
+interface UpcomingPayment {
   id: number
-  name: string
-  collectorId: string
-  isActive: boolean
+  scheduleDate: string
+  totalDue: number
+  paidAmount: number
+  outstanding: number
+  status: string
+  batch: {
+    id: number
+    batchNo: string
+    quantity: number
+    customer: {
+      name: string
+      mobile: string
+    }
+    collector: {
+      name: string
+      collectorId: string
+    }
+  }
+  type: string
 }
+
+type TabType = 'history' | 'upcoming' | 'penalty-history' | 'penalty-collections'
 
 export default function PaymentsPage() {
-  const [payments, setPayments] = useState<Payment[]>([])
+  const [activeTab, setActiveTab] = useState<TabType>('history')
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [dateFilter, setDateFilter] = useState<string>('all')
+  const [collectorFilter, setCollectorFilter] = useState<string>('all')
   const [showPaymentModal, setShowPaymentModal] = useState(false)
-
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
 
+  // Data states
+  const [payments, setPayments] = useState<Payment[]>([])
+  const [upcomingPayments, setUpcomingPayments] = useState<UpcomingPayment[]>([])
+  const [penaltyHistory, setPenaltyHistory] = useState<Payment[]>([])
+  const [penaltyCollections, setPenaltyCollections] = useState<Payment[]>([])
+
+  // Summary states
   const [todayTotal, setTodayTotal] = useState(0)
   const [weekTotal, setWeekTotal] = useState(0)
   const [monthTotal, setMonthTotal] = useState(0)
+  const [penaltySummary, setPenaltySummary] = useState({ totalPenaltyWaived: 0, totalAmount: 0, count: 0 })
 
   // Details Modal State
   const [selectedPaymentForView, setSelectedPaymentForView] = useState<Payment | null>(null)
   const [showViewModal, setShowViewModal] = useState(false)
 
-  useEffect(() => {
-    fetchPayments()
-    fetchSummary()
-  }, [page, search, dateFilter])
+  const [collectors, setCollectors] = useState<Array<{ id: number; name: string; collectorId: string }>>([])
 
-  const fetchPayments = async () => {
+  useEffect(() => {
+    fetchCollectors()
+    fetchSummary()
+  }, [])
+
+  useEffect(() => {
+    fetchData()
+  }, [activeTab, page, search, dateFilter, collectorFilter])
+
+  const fetchCollectors = async () => {
+    try {
+      const response = await fetch('/api/collectors?pageSize=100')
+      const result = await response.json()
+      if (result.success) {
+        setCollectors(result.data.filter((c: any) => c.isActive))
+      }
+    } catch (error) {
+      console.error('Failed to fetch collectors:', error)
+    }
+  }
+
+  const fetchData = async () => {
     setLoading(true)
     try {
       const params = new URLSearchParams({
@@ -85,16 +121,108 @@ export default function PaymentsPage() {
 
       if (search) params.append('search', search)
       if (dateFilter !== 'all') params.append('dateFilter', dateFilter)
+      if (collectorFilter !== 'all') params.append('collectorId', collectorFilter)
 
-      const response = await fetch(`/api/payments?${params}`)
-      const result = await response.json()
+      let response
+      if (activeTab === 'history') {
+        // Fetch both batch payments and individual payments
+        const [batchResponse, individualResponse] = await Promise.all([
+          fetch(`/api/batch-payments?${params}`),
+          fetch(`/api/payments?${params}`),
+        ])
+        const batchResult = await batchResponse.json()
+        const individualResult = await individualResponse.json()
 
-      if (result.success) {
-        setPayments(result.data)
-        setTotalPages(result.pagination?.totalPages || 1)
+        const combined: Payment[] = []
+        if (batchResult.success) {
+          combined.push(...batchResult.data.map((p: any) => ({
+            id: p.id,
+            amount: Number(p.amount),
+            paymentDate: p.paymentDate,
+            paymentMode: p.paymentMode,
+            remarks: p.remarks,
+            penaltyWaived: Number(p.penaltyWaived || 0),
+            batch: {
+              batchNo: p.batch.batchNo,
+              quantity: p.batch.quantity,
+              customer: p.batch.customer,
+            },
+            collector: { name: p.batch.collector?.name || 'N/A' },
+            photoUrl: null,
+            schedule: p.schedule,
+          })))
+        }
+        if (individualResult.success) {
+          combined.push(...individualResult.data.map((p: any) => ({
+            id: p.id,
+            amount: Number(p.amount),
+            paymentDate: p.paymentDate,
+            paymentMode: p.paymentMode,
+            remarks: p.remarks,
+            token: p.token,
+            collector: p.collector,
+            photoUrl: p.photoUrl,
+          })))
+        }
+        // Sort by date descending
+        combined.sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime())
+        setPayments(combined)
+        setTotalPages(Math.max(batchResult.pagination?.totalPages || 1, individualResult.pagination?.totalPages || 1))
+      } else if (activeTab === 'upcoming') {
+        response = await fetch(`/api/payments/upcoming?${params}`)
+        const result = await response.json()
+        if (result.success) {
+          setUpcomingPayments(result.data)
+          setTotalPages(result.pagination?.totalPages || 1)
+        }
+      } else if (activeTab === 'penalty-history') {
+        response = await fetch(`/api/payments/penalty-history?${params}`)
+        const result = await response.json()
+        if (result.success) {
+          setPenaltyHistory(result.data.map((p: any) => ({
+            id: p.id,
+            amount: Number(p.amount),
+            paymentDate: p.paymentDate,
+            paymentMode: p.paymentMode,
+            remarks: p.remarks,
+            penaltyWaived: Number(p.penaltyWaived || 0),
+            batch: {
+              batchNo: p.batch.batchNo,
+              quantity: p.batch.quantity,
+              customer: p.batch.customer,
+            },
+            collector: { name: p.batch.collector?.name || 'N/A' },
+            schedule: p.schedule,
+          })))
+          setTotalPages(result.pagination?.totalPages || 1)
+        }
+      } else if (activeTab === 'penalty-collections') {
+        response = await fetch(`/api/payments/penalty-collections?${params}`)
+        const result = await response.json()
+        if (result.success) {
+          setPenaltyCollections(result.data.map((p: any) => ({
+            id: p.id,
+            amount: Number(p.amount),
+            paymentDate: p.paymentDate,
+            paymentMode: p.paymentMode,
+            remarks: p.remarks,
+            penaltyWaived: Number(p.penaltyWaived || 0),
+            batch: {
+              batchNo: p.batch.batchNo,
+              quantity: p.batch.quantity,
+              customer: p.batch.customer,
+            },
+            collector: { name: p.batch.collector?.name || 'N/A' },
+            schedule: p.schedule,
+          })))
+          if (result.summary) {
+            setPenaltySummary(result.summary)
+          }
+          setTotalPages(result.pagination?.totalPages || 1)
+        }
       }
     } catch (error) {
-      console.error('Failed to fetch payments:', error)
+      console.error('Failed to fetch data:', error)
     } finally {
       setLoading(false)
     }
@@ -142,13 +270,35 @@ export default function PaymentsPage() {
     )
   }
 
+  const tabs = [
+    { id: 'history' as TabType, label: 'Payment History', icon: History },
+    { id: 'upcoming' as TabType, label: 'Upcoming', icon: Clock },
+    { id: 'penalty-history' as TabType, label: 'Penalty History', icon: AlertTriangle },
+    { id: 'penalty-collections' as TabType, label: 'Penalty Collections', icon: TrendingUp },
+  ]
+
+  const getCurrentData = () => {
+    switch (activeTab) {
+      case 'history':
+        return payments
+      case 'upcoming':
+        return upcomingPayments
+      case 'penalty-history':
+        return penaltyHistory
+      case 'penalty-collections':
+        return penaltyCollections
+      default:
+        return []
+    }
+  }
+
   return (
     <div className="space-y-8 pb-20">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Payments</h1>
-          <p className="text-slate-500 text-sm mt-1">Track collections, record payments, and monitor daily financial inflow.</p>
+          <p className="text-slate-500 text-sm mt-1">Track all payments, upcoming dues, and penalty collections.</p>
         </div>
         <button
           onClick={() => setShowPaymentModal(true)}
@@ -178,6 +328,53 @@ export default function PaymentsPage() {
         ))}
       </div>
 
+      {/* Penalty Collections Summary */}
+      {activeTab === 'penalty-collections' && penaltySummary.count > 0 && (
+        <div className="bg-gradient-to-r from-rose-50 to-orange-50 rounded-2xl p-6 border border-rose-200 shadow-sm">
+          <div className="grid grid-cols-3 gap-6">
+            <div>
+              <p className="text-[10px] font-bold text-rose-400 uppercase tracking-widest mb-2">Total Penalty Waived</p>
+              <p className="text-2xl font-bold text-rose-600 font-mono">{formatCurrency(penaltySummary.totalPenaltyWaived)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-rose-400 uppercase tracking-widest mb-2">Total Collections</p>
+              <p className="text-2xl font-bold text-rose-600 font-mono">{formatCurrency(penaltySummary.totalAmount)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-rose-400 uppercase tracking-widest mb-2">Total Transactions</p>
+              <p className="text-2xl font-bold text-rose-600 font-mono">{penaltySummary.count}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tabs */}
+      <div className="bg-white rounded-2xl p-2 border border-slate-200 shadow-sm">
+        <div className="flex gap-2 overflow-x-auto">
+          {tabs.map((tab) => {
+            const Icon = tab.icon
+            const isActive = activeTab === tab.id
+            return (
+              <button
+                key={tab.id}
+                onClick={() => {
+                  setActiveTab(tab.id)
+                  setPage(1)
+                }}
+                className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm transition-all whitespace-nowrap ${
+                  isActive
+                    ? 'bg-orange-600 text-white shadow-md'
+                    : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <Icon className="w-4 h-4" />
+                {tab.label}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
       {/* Filters */}
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
         <div className="flex flex-col md:flex-row gap-4">
@@ -185,7 +382,7 @@ export default function PaymentsPage() {
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
             <input
               type="text"
-              placeholder="Search by token, customer or mobile..."
+              placeholder="Search by batch, customer or mobile..."
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value)
@@ -193,6 +390,25 @@ export default function PaymentsPage() {
               }}
               className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none text-slate-900 font-medium placeholder:text-slate-400 transition-all text-sm"
             />
+          </div>
+
+          <div className="relative min-w-[180px]">
+            <select
+              value={collectorFilter}
+              onChange={(e) => {
+                setCollectorFilter(e.target.value)
+                setPage(1)
+              }}
+              className="w-full pl-4 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none text-slate-900 font-bold text-xs uppercase tracking-widest appearance-none transition-all cursor-pointer"
+            >
+              <option value="all">All Collectors</option>
+              {collectors.map((collector) => (
+                <option key={collector.id} value={collector.id}>
+                  {collector.name}
+                </option>
+              ))}
+            </select>
+            <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 rotate-90 pointer-events-none" />
           </div>
 
           <div className="relative min-w-[200px]">
@@ -219,12 +435,12 @@ export default function PaymentsPage() {
         {loading ? (
           <div className="flex flex-col items-center justify-center p-20 gap-4">
             <div className="w-12 h-12 border-4 border-slate-100 border-t-orange-600 rounded-full animate-spin"></div>
-            <p className="text-xs font-bold uppercase tracking-widest text-slate-400 animate-pulse">Loading Payments...</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-slate-400 animate-pulse">Loading...</p>
           </div>
-        ) : payments.length === 0 ? (
+        ) : getCurrentData().length === 0 ? (
           <div className="flex flex-col items-center justify-center p-20 text-slate-400 text-center">
             <IndianRupee className="w-12 h-12 text-slate-200 mb-4" />
-            <p className="text-lg font-bold text-slate-900">No Payments Found</p>
+            <p className="text-lg font-bold text-slate-900">No Data Found</p>
             <p className="text-sm text-slate-500 mt-1">Try adjusting your search or filters.</p>
           </div>
         ) : (
@@ -233,72 +449,145 @@ export default function PaymentsPage() {
               <table className="w-full">
                 <thead>
                   <tr className="bg-slate-50/50 border-b border-slate-100">
-                    <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                      Timestamp
-                    </th>
-                    <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                      Token / Customer
-                    </th>
-                    <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                      Collector
-                    </th>
-                    <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                      Amount
-                    </th>
-                    <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                      Mode
-                    </th>
-                    <th className="px-6 py-4 text-right text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                      Actions
-                    </th>
+                    {activeTab === 'upcoming' ? (
+                      <>
+                        <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest">Due Date</th>
+                        <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest">Batch / Customer</th>
+                        <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest">Collector</th>
+                        <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest">Due Amount</th>
+                        <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest">Outstanding</th>
+                        <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest">Status</th>
+                      </>
+                    ) : (
+                      <>
+                        <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest">Date</th>
+                        <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest">Batch / Token</th>
+                        <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest">Customer</th>
+                        <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest">Collector</th>
+                        <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest">Amount</th>
+                        {(activeTab === 'penalty-history' || activeTab === 'penalty-collections') && (
+                          <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest">Penalty Waived</th>
+                        )}
+                        <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest">Mode</th>
+                        <th className="px-6 py-4 text-right text-[10px] font-bold text-slate-400 uppercase tracking-widest">Actions</th>
+                      </>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {payments.map((payment) => (
-                    <tr key={payment.id} className="group hover:bg-slate-50/50 transition-colors">
-                      <td className="px-6 py-5">
-                        <div>
-                          <p className="text-xs font-bold text-slate-900 uppercase">
-                            {format(new Date(payment.paymentDate), 'dd MMM, hh:mm a')}
-                          </p>
-                          <p className="text-[10px] font-bold text-slate-400 mt-0.5 uppercase tracking-widest">
-                            {format(new Date(payment.paymentDate), 'yyyy')}
-                          </p>
-                        </div>
-                      </td>
-                      <td className="px-6 py-5">
-                        <div>
-                          <p className="text-sm font-bold text-slate-900 tracking-tight uppercase">{payment.token.tokenNo}</p>
-                          <p className="text-[10px] font-bold text-slate-400 mt-0.5 uppercase tracking-widest">{payment.token.customer.name}</p>
-                        </div>
-                      </td>
-                      <td className="px-6 py-5">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center text-slate-400">
-                            <UserCog className="w-4 h-4" />
+                  {activeTab === 'upcoming' ? (
+                    (getCurrentData() as UpcomingPayment[]).map((item) => (
+                      <tr key={item.id} className="group hover:bg-slate-50/50 transition-colors">
+                        <td className="px-6 py-5">
+                          <div>
+                            <p className="text-xs font-bold text-slate-900 uppercase">
+                              {format(new Date(item.scheduleDate), 'dd MMM yyyy')}
+                            </p>
+                            <p className="text-[10px] font-bold text-slate-400 mt-0.5 uppercase tracking-widest">
+                              {format(new Date(item.scheduleDate), 'EEEE')}
+                            </p>
                           </div>
-                          <p className="text-xs font-bold text-slate-600 uppercase tracking-tight">{payment.collector.name}</p>
-                        </div>
-                      </td>
-                      <td className="px-6 py-5">
-                        <p className="text-sm font-bold text-emerald-600 font-mono">
-                          {formatCurrency(payment.amount)}
-                        </p>
-                      </td>
-                      <td className="px-6 py-5">{getPaymentModeBadge(payment.paymentMode)}</td>
-                      <td className="px-6 py-5 text-right whitespace-nowrap">
-                        <button
-                          onClick={() => {
-                            setSelectedPaymentForView(payment)
-                            setShowViewModal(true)
-                          }}
-                          className="px-4 py-2 bg-zinc-100 text-zinc-900 rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-zinc-200 transition-all border border-slate-200"
-                        >
-                          View Details
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td className="px-6 py-5">
+                          <div>
+                            <p className="text-sm font-bold text-slate-900 tracking-tight uppercase">{item.batch.batchNo}</p>
+                            <p className="text-[10px] font-bold text-slate-400 mt-0.5 uppercase tracking-widest">
+                              {item.batch.customer.name} • {item.batch.quantity}x
+                            </p>
+                          </div>
+                        </td>
+                        <td className="px-6 py-5">
+                          <p className="text-xs font-bold text-slate-600 uppercase tracking-tight">{item.batch.collector.name}</p>
+                        </td>
+                        <td className="px-6 py-5">
+                          <p className="text-sm font-bold text-slate-900 font-mono">{formatCurrency(item.totalDue)}</p>
+                        </td>
+                        <td className="px-6 py-5">
+                          <p className="text-sm font-bold text-orange-600 font-mono">{formatCurrency(item.outstanding)}</p>
+                        </td>
+                        <td className="px-6 py-5">
+                          <span
+                            className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest ${
+                              item.status === 'paid'
+                                ? 'bg-emerald-50 text-emerald-600 border border-emerald-100'
+                                : item.status === 'overdue'
+                                ? 'bg-rose-50 text-rose-600 border border-rose-100'
+                                : 'bg-orange-50 text-orange-600 border border-orange-100'
+                            }`}
+                          >
+                            {item.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    (getCurrentData() as Payment[]).map((payment) => (
+                      <tr key={payment.id} className="group hover:bg-slate-50/50 transition-colors">
+                        <td className="px-6 py-5">
+                          <div>
+                            <p className="text-xs font-bold text-slate-900 uppercase">
+                              {format(new Date(payment.paymentDate), 'dd MMM, hh:mm a')}
+                            </p>
+                            <p className="text-[10px] font-bold text-slate-400 mt-0.5 uppercase tracking-widest">
+                              {format(new Date(payment.paymentDate), 'yyyy')}
+                            </p>
+                          </div>
+                        </td>
+                        <td className="px-6 py-5">
+                          <div>
+                            <p className="text-sm font-bold text-slate-900 tracking-tight uppercase">
+                              {payment.batch ? payment.batch.batchNo : payment.token?.tokenNo || 'N/A'}
+                            </p>
+                            {payment.batch && (
+                              <p className="text-[10px] font-bold text-slate-400 mt-0.5 uppercase tracking-widest">
+                                {payment.batch.quantity}x Tokens
+                              </p>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-5">
+                          <p className="text-xs font-bold text-slate-600 uppercase tracking-tight">
+                            {payment.batch ? payment.batch.customer.name : payment.token?.customer.name || 'N/A'}
+                          </p>
+                          <p className="text-[10px] font-bold text-slate-400 mt-0.5">
+                            {payment.batch ? payment.batch.customer.mobile : payment.token?.customer.mobile || ''}
+                          </p>
+                        </td>
+                        <td className="px-6 py-5">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center text-slate-400">
+                              <UserCog className="w-4 h-4" />
+                            </div>
+                            <p className="text-xs font-bold text-slate-600 uppercase tracking-tight">{payment.collector.name}</p>
+                          </div>
+                        </td>
+                        <td className="px-6 py-5">
+                          <p className="text-sm font-bold text-emerald-600 font-mono">
+                            {formatCurrency(payment.amount)}
+                          </p>
+                        </td>
+                        {(activeTab === 'penalty-history' || activeTab === 'penalty-collections') && (
+                          <td className="px-6 py-5">
+                            <p className="text-sm font-bold text-rose-600 font-mono">
+                              {formatCurrency(payment.penaltyWaived || 0)}
+                            </p>
+                          </td>
+                        )}
+                        <td className="px-6 py-5">{getPaymentModeBadge(payment.paymentMode)}</td>
+                        <td className="px-6 py-5 text-right whitespace-nowrap">
+                          <button
+                            onClick={() => {
+                              setSelectedPaymentForView(payment)
+                              setShowViewModal(true)
+                            }}
+                            className="px-4 py-2 bg-zinc-100 text-zinc-900 rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-zinc-200 transition-all border border-slate-200"
+                          >
+                            View
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -336,7 +625,7 @@ export default function PaymentsPage() {
           onClose={() => setShowPaymentModal(false)}
           onSuccess={() => {
             setShowPaymentModal(false)
-            fetchPayments()
+            fetchData()
             fetchSummary()
           }}
         />
@@ -363,7 +652,9 @@ function ViewPaymentModal({ payment, onClose }: { payment: Payment; onClose: () 
         <div className="p-6 border-b border-slate-100 flex justify-between items-center">
           <div>
             <h2 className="text-xl font-bold text-slate-900">Payment Details</h2>
-            <p className="text-slate-500 text-xs mt-1">Receipt for token {payment.token.tokenNo}</p>
+            <p className="text-slate-500 text-xs mt-1">
+              {payment.batch ? `Batch: ${payment.batch.batchNo}` : `Token: ${payment.token?.tokenNo}`}
+            </p>
           </div>
           <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-900 transition-colors">
             <X className="w-5 h-5" />
@@ -393,6 +684,13 @@ function ViewPaymentModal({ payment, onClose }: { payment: Payment; onClose: () 
             </div>
           </div>
 
+          {payment.penaltyWaived && payment.penaltyWaived > 0 && (
+            <div className="bg-rose-50 p-6 rounded-2xl border border-rose-100">
+              <p className="text-[10px] font-bold text-rose-400 uppercase tracking-widest mb-2">Penalty Waived</p>
+              <p className="text-xl font-bold text-rose-600 font-mono">{formatCurrency(payment.penaltyWaived)}</p>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-6">
             <div className="space-y-1">
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Collector</p>
@@ -420,19 +718,6 @@ function ViewPaymentModal({ payment, onClose }: { payment: Payment; onClose: () 
               {payment.remarks || 'No remarks provided.'}
             </div>
           </div>
-
-          {payment.photoUrl && (
-            <div className="space-y-3">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Receipt Image</p>
-              <div className="rounded-2xl overflow-hidden border border-slate-100 shadow-sm relative group bg-slate-50">
-                <img
-                  src={payment.photoUrl}
-                  alt="Receipt"
-                  className="w-full h-auto object-contain max-h-[300px]"
-                />
-              </div>
-            </div>
-          )}
         </div>
 
         <div className="p-6 bg-slate-50 border-t border-slate-100 flex gap-4">
@@ -447,7 +732,7 @@ function ViewPaymentModal({ payment, onClose }: { payment: Payment; onClose: () 
             className="flex-1 py-3 bg-zinc-900 hover:bg-orange-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-md flex items-center justify-center gap-2"
           >
             <Printer className="w-4 h-4" />
-            Print Receipt
+            Print
           </button>
         </div>
       </div>
@@ -458,91 +743,66 @@ function ViewPaymentModal({ payment, onClose }: { payment: Payment; onClose: () 
 function RecordPaymentModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [activeTokens, setActiveTokens] = useState<Token[]>([])
-  const [collectors, setCollectors] = useState<Collector[]>([])
-  const [selectedToken, setSelectedToken] = useState<Token | null>(null)
-  const [pendingSchedules, setPendingSchedules] = useState<Token['schedules']>([])
+  const [activeBatches, setActiveBatches] = useState<any[]>([])
+  const [selectedBatch, setSelectedBatch] = useState<any>(null)
+  const [batchDetails, setBatchDetails] = useState<any>(null)
 
   const [formData, setFormData] = useState({
-    tokenId: '',
-    scheduleId: '',
-    collectorId: '',
+    batchId: '',
     amount: '',
     paymentMode: 'cash' as 'cash' | 'upi' | 'bank_transfer',
     paymentDate: format(new Date(), 'yyyy-MM-dd'),
+    penaltyWaived: '0',
     remarks: '',
   })
 
   useEffect(() => {
-    fetchActiveTokens()
-    fetchCollectors()
+    fetchActiveBatches()
   }, [])
 
   useEffect(() => {
-    if (formData.tokenId) {
-      const token = activeTokens.find((t) => t.id === parseInt(formData.tokenId))
-      setSelectedToken(token || null)
-      if (token) {
-        const pending = token.schedules.filter((s) => s.status === 'pending' || s.status === 'overdue')
-        setPendingSchedules(pending)
-        const today = format(new Date(), 'yyyy-MM-dd')
-        const todaySchedule = pending.find((s) => {
-          try {
-            const scheduleDate = new Date(s.scheduleDate)
-            if (isNaN(scheduleDate.getTime())) return false
-            return format(scheduleDate, 'yyyy-MM-dd') === today
-          } catch {
-            return false
-          }
-        })
-        if (todaySchedule) {
-          setFormData((prev) => ({
-            ...prev,
-            scheduleId: todaySchedule.id.toString(),
-            amount: todaySchedule.totalDue.toString(),
-          }))
-        }
+    if (formData.batchId) {
+      const batch = activeBatches.find((b) => b.id === parseInt(formData.batchId))
+      setSelectedBatch(batch || null)
+      if (batch) {
+        fetchBatchDetails(batch.id)
       }
     }
-  }, [formData.tokenId, activeTokens])
+  }, [formData.batchId, activeBatches])
 
   useEffect(() => {
-    if (formData.scheduleId && selectedToken) {
-      const schedule = pendingSchedules.find((s) => s.id === parseInt(formData.scheduleId))
-      if (schedule) {
-        setFormData((prev) => ({ ...prev, amount: schedule.totalDue.toString() }))
-      }
+    if (batchDetails) {
+      const todaySchedule = batchDetails.summary?.todaySchedule
+      const nextSchedule = batchDetails.summary?.nextSchedule
+      const defaultAmount = todaySchedule?.totalDue || nextSchedule?.totalDue || batchDetails.batch?.totalDailyAmount || ''
+      setFormData((prev) => ({
+        ...prev,
+        amount: defaultAmount.toString(),
+      }))
     }
-  }, [formData.scheduleId, selectedToken, pendingSchedules])
+  }, [batchDetails])
 
-  const fetchActiveTokens = async () => {
+  const fetchActiveBatches = async () => {
     try {
-      const response = await fetch('/api/tokens?status=active&pageSize=1000')
+      const response = await fetch('/api/token-batches?status=active&pageSize=1000')
       const result = await response.json()
       if (result.success) {
-        const tokensWithSchedules = await Promise.all(
-          result.data.map(async (token: any) => {
-            const detailResponse = await fetch(`/api/tokens/${token.id}`)
-            const detailResult = await detailResponse.json()
-            return detailResult.success ? detailResult.data : token
-          })
-        )
-        setActiveTokens(tokensWithSchedules)
+        setActiveBatches(result.data)
       }
     } catch (error) {
-      console.error('Failed to fetch active tokens:', error)
+      console.error('Failed to fetch active batches:', error)
     }
   }
 
-  const fetchCollectors = async () => {
+  const fetchBatchDetails = async (batchId: number) => {
     try {
-      const response = await fetch('/api/collectors?pageSize=100')
+      const response = await fetch(`/api/token-batches/${batchId}`)
       const result = await response.json()
       if (result.success) {
-        setCollectors(result.data.filter((c: Collector) => c.isActive))
+        setBatchDetails(result.data)
       }
     } catch (error) {
-      console.error('Failed to fetch collectors:', error)
+      console.error('Failed to fetch batch details:', error)
     }
   }
 
@@ -552,15 +812,22 @@ function RecordPaymentModal({ onClose, onSuccess }: { onClose: () => void; onSuc
     setError('')
 
     try {
-      const response = await fetch('/api/payments', {
+      const response = await fetch('/api/batch-payments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          batchId: parseInt(formData.batchId),
+          amount: parseFloat(formData.amount),
+          paymentMode: formData.paymentMode,
+          paymentDate: formData.paymentDate,
+          penaltyWaived: parseFloat(formData.penaltyWaived),
+          remarks: formData.remarks
+        }),
       })
 
       const result = await response.json()
 
-      if (response.ok) {
+      if (result.success) {
         onSuccess()
       } else {
         setError(result.error || 'Failed to record payment')
@@ -577,8 +844,8 @@ function RecordPaymentModal({ onClose, onSuccess }: { onClose: () => void; onSuc
       <div className="bg-white rounded-2xl shadow-xl max-w-xl w-full overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-300">
         <div className="p-6 border-b border-slate-100 flex justify-between items-center">
           <div>
-            <h2 className="text-xl font-bold text-slate-900">Record Payment</h2>
-            <p className="text-slate-500 text-xs mt-1">Enter transaction details below.</p>
+            <h2 className="text-xl font-bold text-slate-900">Record Batch Payment</h2>
+            <p className="text-slate-500 text-xs mt-1">Enter transaction details for token batch.</p>
           </div>
           <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-900 transition-colors">
             <X className="w-5 h-5" />
@@ -594,22 +861,22 @@ function RecordPaymentModal({ onClose, onSuccess }: { onClose: () => void; onSuc
           )}
 
           <div className="space-y-4">
-            {/* Token Selection */}
+            {/* Batch Selection */}
             <div className="space-y-1.5">
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">
-                Select Token <span className="text-rose-500">*</span>
+                Select Batch <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
                 <select
                   required
-                  value={formData.tokenId}
-                  onChange={(e) => setFormData({ ...formData, tokenId: e.target.value, scheduleId: '' })}
+                  value={formData.batchId}
+                  onChange={(e) => setFormData({ ...formData, batchId: e.target.value, amount: '' })}
                   className="w-full pl-4 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none text-slate-900 font-bold transition-all text-sm appearance-none cursor-pointer uppercase"
                 >
-                  <option value="">Choose token...</option>
-                  {activeTokens.map((token) => (
-                    <option key={token.id} value={token.id}>
-                      {token.tokenNo} — {token.customer.name}
+                  <option value="">Choose batch...</option>
+                  {activeBatches.map((batch) => (
+                    <option key={batch.id} value={batch.id}>
+                      {batch.batchNo} — {batch.customer.name} ({batch.quantity}x)
                     </option>
                   ))}
                 </select>
@@ -617,53 +884,27 @@ function RecordPaymentModal({ onClose, onSuccess }: { onClose: () => void; onSuc
               </div>
             </div>
 
-            {/* Schedule Selection */}
-            {pendingSchedules.length > 0 && (
-              <div className="space-y-1.5 animate-in slide-in-from-top-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">
-                  Select Installment <span className="text-rose-500">*</span>
-                </label>
-                <div className="relative">
-                  <select
-                    required
-                    value={formData.scheduleId}
-                    onChange={(e) => setFormData({ ...formData, scheduleId: e.target.value })}
-                    className="w-full pl-4 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none text-slate-900 font-bold transition-all text-sm appearance-none cursor-pointer uppercase"
-                  >
-                    <option value="">Select date...</option>
-                    {pendingSchedules.map((schedule) => (
-                      <option key={schedule.id} value={schedule.id}>
-                        {format(new Date(schedule.scheduleDate), 'dd MMM yyyy')} — DUE: {formatCurrency(schedule.totalDue)}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 rotate-90 pointer-events-none" />
+            {/* Batch Details Preview */}
+            {selectedBatch && batchDetails && (
+              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2 animate-in slide-in-from-top-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-slate-900">{selectedBatch.batchNo}</p>
+                    <p className="text-[10px] text-slate-500">{selectedBatch.customer.name} • {selectedBatch.quantity} Tokens</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Daily Due</p>
+                    <p className="text-sm font-bold text-orange-600">{formatCurrency(selectedBatch.totalDailyAmount)}</p>
+                  </div>
                 </div>
+                {batchDetails.summary?.todaySchedule && (
+                  <div className="pt-2 border-t border-slate-200">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Today's Due</p>
+                    <p className="text-lg font-bold text-slate-900">{formatCurrency(batchDetails.summary.todaySchedule.totalDue)}</p>
+                  </div>
+                )}
               </div>
             )}
-
-            {/* Collector Selection */}
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">
-                Select Collector <span className="text-rose-500">*</span>
-              </label>
-              <div className="relative">
-                <select
-                  required
-                  value={formData.collectorId}
-                  onChange={(e) => setFormData({ ...formData, collectorId: e.target.value })}
-                  className="w-full pl-4 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none text-slate-900 font-bold transition-all text-sm appearance-none cursor-pointer uppercase"
-                >
-                  <option value="">Choose collector...</option>
-                  {collectors.map((collector) => (
-                    <option key={collector.id} value={collector.id}>
-                      {collector.name} ({collector.collectorId})
-                    </option>
-                  ))}
-                </select>
-                <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 rotate-90 pointer-events-none" />
-              </div>
-            </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
@@ -721,6 +962,22 @@ function RecordPaymentModal({ onClose, onSuccess }: { onClose: () => void; onSuc
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/* Penalty Waived */}
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">
+                Penalty Waived (₹)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                value={formData.penaltyWaived}
+                onChange={(e) => setFormData({ ...formData, penaltyWaived: e.target.value })}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none text-slate-900 font-bold transition-all"
+                placeholder="0.00"
+              />
+              <p className="text-xs text-slate-500 mt-1">Enter amount of penalty to waive off</p>
             </div>
 
             <div className="space-y-1.5">

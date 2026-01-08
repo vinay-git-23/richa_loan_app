@@ -13,28 +13,36 @@ import {
     X,
     CheckCircle,
     Ban,
-    RefreshCw
+    RefreshCw,
+    Search,
+    Package,
+    ChevronRight
 } from 'lucide-react'
 import { formatCurrency } from '@/utils/calculations'
 import { format, differenceInDays } from 'date-fns'
 
 interface OverdueSchedule {
     id: number
-    tokenId: number
+    batchId: number
     scheduleDate: string
     installmentAmount: number
-    penaltyAmount: number
+    penaltyPerToken: number
+    totalPenalty: number
     totalDue: number
     paidAmount: number
+    penaltyWaived: number
     status: string
-    token: {
-        tokenNo: string
+    batch: {
+        id: number
+        batchNo: string
+        quantity: number
         customer: {
             name: string
             mobile: string
         }
         collector: {
             name: string
+            collectorId: string
         }
     }
 }
@@ -52,12 +60,28 @@ export default function OverdueManagementPage() {
     const [stats, setStats] = useState<PenaltyStats | null>(null)
     const [loading, setLoading] = useState(true)
     const [statusFilter, setStatusFilter] = useState<string>('all')
+    const [collectorFilter, setCollectorFilter] = useState<string>('all')
+    const [search, setSearch] = useState('')
     const [showPenaltyModal, setShowPenaltyModal] = useState(false)
     const [selectedSchedule, setSelectedSchedule] = useState<OverdueSchedule | null>(null)
+    const [collectors, setCollectors] = useState<Array<{ id: number; name: string; collectorId: string }>>([])
 
     useEffect(() => {
+        fetchCollectors()
         fetchOverdueSchedules()
-    }, [statusFilter])
+    }, [statusFilter, collectorFilter, search])
+
+    const fetchCollectors = async () => {
+        try {
+            const response = await fetch('/api/collectors?pageSize=100')
+            const result = await response.json()
+            if (result.success) {
+                setCollectors(result.data.filter((c: any) => c.isActive))
+            }
+        } catch (error) {
+            console.error('Failed to fetch collectors:', error)
+        }
+    }
 
     const fetchOverdueSchedules = async () => {
         setLoading(true)
@@ -65,6 +89,12 @@ export default function OverdueManagementPage() {
             const params = new URLSearchParams()
             if (statusFilter !== 'all') {
                 params.append('status', statusFilter)
+            }
+            if (collectorFilter !== 'all') {
+                params.append('collectorId', collectorFilter)
+            }
+            if (search) {
+                params.append('search', search)
             }
 
             const response = await fetch(`/api/overdue-schedules?${params}`)
@@ -92,10 +122,14 @@ export default function OverdueManagementPage() {
         }
 
         try {
-            const response = await fetch(`/api/schedules/${scheduleId}`, {
+            const response = await fetch(`/api/batch-schedules/${scheduleId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ penaltyAmount: 0 })
+                body: JSON.stringify({ 
+                    totalPenalty: 0, 
+                    penaltyPerToken: 0,
+                    penaltyWaived: 0 
+                })
             })
 
             if (response.ok) {
@@ -118,7 +152,7 @@ export default function OverdueManagementPage() {
             {/* Header */}
             <div>
                 <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Overdue Management</h1>
-                <p className="text-slate-500 text-sm mt-1">Monitor and manage overdue payments and penalties.</p>
+                <p className="text-slate-500 text-sm mt-1">Monitor and manage overdue batch payments and penalties.</p>
             </div>
 
             {/* Stats Grid */}
@@ -161,20 +195,49 @@ export default function OverdueManagementPage() {
                     <Filter className="w-5 h-5 text-slate-400" />
                     <h3 className="text-sm font-bold text-slate-900">Filter Schedules</h3>
                 </div>
-                <div className="flex gap-2 flex-wrap">
-                    {['all', 'overdue', 'partial'].map((status) => (
-                        <button
-                            key={status}
-                            onClick={() => setStatusFilter(status)}
-                            className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-all ${
-                                statusFilter === status
-                                    ? 'bg-orange-600 text-white shadow-md'
-                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                            }`}
-                        >
-                            {status === 'all' ? 'All' : status}
-                        </button>
-                    ))}
+                <div className="space-y-4">
+                    <div className="flex gap-2 flex-wrap">
+                        {['all', 'overdue', 'partial', 'pending'].map((status) => (
+                            <button
+                                key={status}
+                                onClick={() => setStatusFilter(status)}
+                                className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-all ${
+                                    statusFilter === status
+                                        ? 'bg-orange-600 text-white shadow-md'
+                                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                }`}
+                            >
+                                {status === 'all' ? 'All' : status}
+                            </button>
+                        ))}
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="relative">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                            <input
+                                type="text"
+                                placeholder="Search by batch, customer or mobile..."
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none text-slate-900 font-medium placeholder:text-slate-400 transition-all text-sm"
+                            />
+                        </div>
+                        <div className="relative">
+                            <select
+                                value={collectorFilter}
+                                onChange={(e) => setCollectorFilter(e.target.value)}
+                                className="w-full pl-4 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none text-slate-900 font-bold text-xs uppercase tracking-widest appearance-none transition-all cursor-pointer"
+                            >
+                                <option value="all">All Collectors</option>
+                                {collectors.map((collector) => (
+                                    <option key={collector.id} value={collector.id}>
+                                        {collector.name}
+                                    </option>
+                                ))}
+                            </select>
+                            <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 rotate-90 pointer-events-none" />
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -185,7 +248,7 @@ export default function OverdueManagementPage() {
                         <div>
                             <h3 className="text-sm font-bold text-slate-900 flex items-center gap-3">
                                 <AlertTriangle className="w-5 h-5 text-orange-600" />
-                                Overdue Schedules
+                                Overdue Batch Schedules
                             </h3>
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
                                 {schedules.length} overdue payment{schedules.length !== 1 ? 's' : ''} found
@@ -210,7 +273,7 @@ export default function OverdueManagementPage() {
                     <div className="flex flex-col items-center justify-center p-20 text-slate-400 text-center">
                         <CheckCircle className="w-12 h-12 text-emerald-200 mb-4" />
                         <p className="text-lg font-bold text-slate-900">No Overdue Schedules</p>
-                        <p className="text-sm text-slate-500 mt-1">All payments are up to date!</p>
+                        <p className="text-sm text-slate-500 mt-1">All batch payments are up to date!</p>
                     </div>
                 ) : (
                     <div className="overflow-x-auto">
@@ -218,7 +281,7 @@ export default function OverdueManagementPage() {
                             <thead>
                                 <tr className="bg-slate-50/30 border-b border-slate-100">
                                     <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                                        Customer / Token
+                                        Batch / Customer
                                     </th>
                                     <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                                         Due Date
@@ -246,25 +309,26 @@ export default function OverdueManagementPage() {
                             <tbody className="divide-y divide-slate-100">
                                 {schedules.map((schedule) => {
                                     const overdueDays = calculateOverdueDays(schedule.scheduleDate)
-                                    const balance = Number(schedule.totalDue) - Number(schedule.paidAmount)
+                                    const balance = Number(schedule.totalDue) - Number(schedule.paidAmount) - Number(schedule.penaltyWaived)
 
                                     return (
                                         <tr
                                             key={schedule.id}
                                             className="group hover:bg-slate-50/50 transition-colors cursor-pointer"
-                                            onClick={() => router.push(`/admin/tokens/${schedule.tokenId}`)}
+                                            onClick={() => router.push(`/admin/token-batches/${schedule.batchId}`)}
                                         >
                                             <td className="px-6 py-4">
                                                 <div>
                                                     <p className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                                                        <User className="w-3 h-3 text-slate-400" />
-                                                        {schedule.token.customer.name}
+                                                        <Package className="w-3 h-3 text-slate-400" />
+                                                        {schedule.batch.batchNo}
                                                     </p>
                                                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
-                                                        {schedule.token.tokenNo}
+                                                        {schedule.batch.customer.name} • {schedule.batch.quantity}x Tokens
                                                     </p>
-                                                    <p className="text-xs text-slate-500 mt-1">
-                                                        {schedule.token.customer.mobile}
+                                                    <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
+                                                        <User className="w-3 h-3" />
+                                                        {schedule.batch.collector.name}
                                                     </p>
                                                 </div>
                                             </td>
@@ -283,8 +347,13 @@ export default function OverdueManagementPage() {
                                             </td>
                                             <td className="px-6 py-4 text-right">
                                                 <p className="text-sm font-bold text-orange-600 font-mono">
-                                                    {formatCurrency(schedule.penaltyAmount)}
+                                                    {formatCurrency(schedule.totalPenalty)}
                                                 </p>
+                                                {schedule.penaltyWaived > 0 && (
+                                                    <p className="text-[10px] font-bold text-emerald-600 mt-0.5">
+                                                        Waived: {formatCurrency(schedule.penaltyWaived)}
+                                                    </p>
+                                                )}
                                             </td>
                                             <td className="px-6 py-4 text-right">
                                                 <p className="text-base font-bold text-slate-900 font-mono">
@@ -297,7 +366,9 @@ export default function OverdueManagementPage() {
                                                         className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest ${
                                                             schedule.status === 'overdue'
                                                                 ? 'bg-rose-50 text-rose-600 border border-rose-100'
-                                                                : 'bg-amber-50 text-amber-600 border border-amber-100'
+                                                                : schedule.status === 'partial'
+                                                                ? 'bg-amber-50 text-amber-600 border border-amber-100'
+                                                                : 'bg-slate-50 text-slate-600 border border-slate-100'
                                                         }`}
                                                     >
                                                         {schedule.status}
@@ -328,7 +399,7 @@ export default function OverdueManagementPage() {
                                                     >
                                                         <IndianRupee className="w-4 h-4" />
                                                     </button>
-                                                    {schedule.penaltyAmount > 0 && (
+                                                    {schedule.totalPenalty > 0 && (
                                                         <button
                                                             onClick={() => handleWaivePenalty(schedule.id)}
                                                             className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
@@ -412,7 +483,7 @@ function PenaltyModal({
     onClose: () => void
     onSuccess: () => void
 }) {
-    const [penaltyAmount, setPenaltyAmount] = useState(schedule.penaltyAmount.toString())
+    const [penaltyAmount, setPenaltyAmount] = useState(schedule.totalPenalty.toString())
     const [loading, setLoading] = useState(false)
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -420,10 +491,17 @@ function PenaltyModal({
         setLoading(true)
 
         try {
-            const response = await fetch(`/api/schedules/${schedule.id}`, {
+            // Calculate penalty per token
+            const penaltyPerToken = parseFloat(penaltyAmount) / schedule.batch.quantity
+            const totalPenalty = parseFloat(penaltyAmount)
+
+            const response = await fetch(`/api/batch-schedules/${schedule.id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ penaltyAmount: parseFloat(penaltyAmount) })
+                body: JSON.stringify({
+                    penaltyPerToken,
+                    totalPenalty,
+                })
             })
 
             if (response.ok) {
@@ -444,7 +522,7 @@ function PenaltyModal({
                 <div className="p-6 border-b border-slate-100 flex justify-between items-center">
                     <div>
                         <h2 className="text-xl font-bold text-slate-900">Apply Penalty</h2>
-                        <p className="text-slate-500 text-xs mt-1">Adjust penalty for this overdue schedule</p>
+                        <p className="text-slate-500 text-xs mt-1">Adjust penalty for this overdue batch schedule</p>
                     </div>
                     <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-900 transition-colors">
                         <X className="w-5 h-5" />
@@ -454,12 +532,16 @@ function PenaltyModal({
                 <div className="p-6 bg-slate-50 border-b border-slate-100">
                     <div className="space-y-3 text-sm">
                         <div className="flex justify-between">
-                            <span className="text-slate-500">Customer:</span>
-                            <span className="font-bold text-slate-900">{schedule.token.customer.name}</span>
+                            <span className="text-slate-500">Batch:</span>
+                            <span className="font-bold text-slate-900">{schedule.batch.batchNo}</span>
                         </div>
                         <div className="flex justify-between">
-                            <span className="text-slate-500">Token:</span>
-                            <span className="font-bold text-slate-900">{schedule.token.tokenNo}</span>
+                            <span className="text-slate-500">Customer:</span>
+                            <span className="font-bold text-slate-900">{schedule.batch.customer.name}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-slate-500">Quantity:</span>
+                            <span className="font-bold text-slate-900">{schedule.batch.quantity}x Tokens</span>
                         </div>
                         <div className="flex justify-between">
                             <span className="text-slate-500">Installment:</span>
@@ -467,7 +549,7 @@ function PenaltyModal({
                         </div>
                         <div className="flex justify-between">
                             <span className="text-slate-500">Current Penalty:</span>
-                            <span className="font-bold text-orange-600">{formatCurrency(schedule.penaltyAmount)}</span>
+                            <span className="font-bold text-orange-600">{formatCurrency(schedule.totalPenalty)}</span>
                         </div>
                     </div>
                 </div>
@@ -475,7 +557,7 @@ function PenaltyModal({
                 <form onSubmit={handleSubmit} className="p-6">
                     <div className="space-y-2 mb-6">
                         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">
-                            New Penalty Amount (₹)
+                            New Total Penalty Amount (₹)
                         </label>
                         <input
                             type="number"
@@ -486,6 +568,9 @@ function PenaltyModal({
                             onChange={(e) => setPenaltyAmount(e.target.value)}
                             className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none text-slate-900 font-bold transition-all text-lg"
                         />
+                        <p className="text-xs text-slate-500 mt-1">
+                            Per token: {formatCurrency(parseFloat(penaltyAmount || '0') / schedule.batch.quantity)}
+                        </p>
                     </div>
 
                     <div className="flex gap-4">

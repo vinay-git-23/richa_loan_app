@@ -18,10 +18,12 @@ import {
     ChevronRight,
     Shield,
     Zap,
-    CheckCircle2
+    CheckCircle2,
+    Package
 } from 'lucide-react'
 import { formatCurrency } from '@/utils/calculations'
 import { format } from 'date-fns'
+import { useRouter } from 'next/navigation'
 
 interface ReportsData {
     collectionSummary: {
@@ -30,11 +32,12 @@ interface ReportsData {
         month: { amount: number; count: number }
     }
     collectionTrend: Array<{ date: string; amount: number }>
-    overdueTokens: Array<{
-        tokenId: number
-        tokenNo: string
+    overdueBatches: Array<{
+        batchId: number
+        batchNo: string
+        quantity: number
         customer: { name: string; mobile: string }
-        collector: { name: string }
+        collector: { name: string; collectorId: string }
         totalOverdue: number
         overdueSchedules: number
         daysOverdue: number
@@ -47,7 +50,7 @@ interface ReportsData {
         activeTokens: number
         monthlyCollection: number
     }>
-    tokenSummary: Array<{
+    batchSummary: Array<{
         status: string
         count: number
         totalDisbursed: number
@@ -61,6 +64,7 @@ interface ReportsData {
 }
 
 export default function ReportsPage() {
+    const router = useRouter()
     const [data, setData] = useState<ReportsData | null>(null)
     const [loading, setLoading] = useState(true)
 
@@ -119,16 +123,25 @@ export default function ReportsPage() {
             {/* Header */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                 <div>
-                    <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Reports</h1>
-                    <p className="text-slate-500 text-sm mt-1">Comprehensive business insights and performance analytics.</p>
+                    <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Reports & Analytics</h1>
+                    <p className="text-slate-500 text-sm mt-1">Comprehensive business insights and batch performance analytics.</p>
                 </div>
-                <button
-                    onClick={fetchReports}
-                    className="flex items-center gap-2 px-6 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-slate-50 hover:border-slate-300 transition-all active:scale-95 shadow-sm"
-                >
-                    <Activity className="w-4 h-4 text-orange-500" />
-                    Refresh
-                </button>
+                <div className="flex gap-3">
+                    <button
+                        onClick={() => router.push('/admin/reports/batch-collection')}
+                        className="flex items-center gap-2 px-6 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-slate-50 hover:border-slate-300 transition-all active:scale-95 shadow-sm"
+                    >
+                        <Package className="w-4 h-4 text-orange-500" />
+                        Batch Report
+                    </button>
+                    <button
+                        onClick={fetchReports}
+                        className="flex items-center gap-2 px-6 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-slate-50 hover:border-slate-300 transition-all active:scale-95 shadow-sm"
+                    >
+                        <Activity className="w-4 h-4 text-orange-500" />
+                        Refresh
+                    </button>
+                </div>
             </div>
 
             {/* Overall Stats Grid */}
@@ -184,7 +197,7 @@ export default function ReportsPage() {
                     <div className="flex items-center justify-between mb-12">
                         <div>
                             <h3 className="text-xl font-bold tracking-tight">Collection Trend</h3>
-                            <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest mt-1">Last 7 days recovery performance.</p>
+                            <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest mt-1">Last 7 days batch collection performance.</p>
                         </div>
                         <div className="flex gap-4">
                             <div className="flex items-center gap-2">
@@ -221,22 +234,27 @@ export default function ReportsPage() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* Overdue Matrix */}
+                {/* Overdue Batches Matrix */}
                 <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                     <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
                         <div>
                             <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                                 <AlertTriangle className="w-4 h-4 text-rose-500" />
-                                Overdue Accounts
+                                Overdue Batches
                             </h3>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">List of accounts with pending installments ({data.overdueTokens.length})</p>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+                                List of batches with pending installments ({data.overdueBatches.length})
+                            </p>
                         </div>
-                        <button className="p-2 text-slate-400 hover:text-slate-900 transition-colors">
-                            <Search className="w-5 h-5" />
+                        <button
+                            onClick={() => router.push('/admin/overdue-management')}
+                            className="px-3 py-1.5 text-xs font-bold text-orange-600 hover:bg-orange-50 rounded-lg transition-all"
+                        >
+                            View All
                         </button>
                     </div>
                     <div className="overflow-auto max-h-[500px]">
-                        {data.overdueTokens.length === 0 ? (
+                        {data.overdueBatches.length === 0 ? (
                             <div className="p-20 text-center">
                                 <Shield className="w-12 h-12 mx-auto mb-4 text-slate-100" />
                                 <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">No defaults detected</p>
@@ -245,25 +263,31 @@ export default function ReportsPage() {
                             <table className="w-full">
                                 <thead className="bg-slate-50/50 sticky top-0 z-10">
                                     <tr className="border-b border-slate-100">
-                                        <th className="px-6 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest">Token</th>
+                                        <th className="px-6 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest">Batch</th>
                                         <th className="px-6 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest">Customer</th>
                                         <th className="px-6 py-3 text-right text-[10px] font-bold text-slate-400 uppercase tracking-widest">Overdue</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
-                                    {data.overdueTokens.slice(0, 10).map((token) => (
-                                        <tr key={token.tokenId} className="hover:bg-slate-50/50 transition-colors">
+                                    {data.overdueBatches.slice(0, 10).map((batch) => (
+                                        <tr
+                                            key={batch.batchId}
+                                            className="hover:bg-slate-50/50 transition-colors cursor-pointer"
+                                            onClick={() => router.push(`/admin/token-batches/${batch.batchId}`)}
+                                        >
                                             <td className="px-6 py-4">
-                                                <p className="text-xs font-bold text-slate-900 uppercase">{token.tokenNo}</p>
-                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight mt-0.5">{token.collector.name}</p>
+                                                <p className="text-xs font-bold text-slate-900 uppercase">{batch.batchNo}</p>
+                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight mt-0.5">
+                                                    {batch.collector.name} • {batch.quantity}x
+                                                </p>
                                             </td>
                                             <td className="px-6 py-4">
-                                                <p className="text-xs font-bold text-slate-900 uppercase">{token.customer.name}</p>
-                                                <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5 font-mono">{token.customer.mobile}</p>
+                                                <p className="text-xs font-bold text-slate-900 uppercase">{batch.customer.name}</p>
+                                                <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5 font-mono">{batch.customer.mobile}</p>
                                             </td>
                                             <td className="px-6 py-4 text-right">
-                                                <p className="text-xs font-bold text-rose-600 font-mono">{formatCurrency(token.totalOverdue)}</p>
-                                                <p className="text-[10px] font-bold text-rose-300 uppercase mt-0.5">{token.daysOverdue}D Delay</p>
+                                                <p className="text-xs font-bold text-rose-600 font-mono">{formatCurrency(batch.totalOverdue)}</p>
+                                                <p className="text-[10px] font-bold text-rose-300 uppercase mt-0.5">{batch.daysOverdue}D Delay</p>
                                             </td>
                                         </tr>
                                     ))}
@@ -280,14 +304,14 @@ export default function ReportsPage() {
                             <Users className="w-4 h-4 text-orange-500" />
                             Collector Ranking
                         </h3>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Performance by collection volume this month.</p>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Performance by batch collection volume this month.</p>
                     </div>
                     <div className="overflow-auto max-h-[500px]">
                         <table className="w-full">
                             <thead className="bg-slate-50/50 sticky top-0 z-10">
                                 <tr className="border-b border-slate-100">
                                     <th className="px-6 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest">Collector</th>
-                                    <th className="px-6 py-3 text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tokens</th>
+                                    <th className="px-6 py-3 text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest">Active Tokens</th>
                                     <th className="px-6 py-3 text-right text-[10px] font-bold text-slate-400 uppercase tracking-widest">Recovery</th>
                                 </tr>
                             </thead>
@@ -321,16 +345,16 @@ export default function ReportsPage() {
                 </div>
             </div>
 
-            {/* Token Status */}
+            {/* Batch Status */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
                 <div className="flex items-center justify-between mb-8">
                     <div>
-                        <h3 className="text-lg font-bold text-slate-900 tracking-tight">Token Status</h3>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Distribution of tokens by their current status.</p>
+                        <h3 className="text-lg font-bold text-slate-900 tracking-tight">Batch Status</h3>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Distribution of batches by their current status.</p>
                     </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                    {data.tokenSummary.map((status) => (
+                    {data.batchSummary.map((status) => (
                         <StatusMiniCard key={status.status} status={status} />
                     ))}
                 </div>
@@ -400,7 +424,7 @@ function StatusMiniCard({ status }: any) {
             <p className="text-2xl font-bold text-slate-900 tracking-tight mb-4">{status.count}</p>
             <div className="pt-4 border-t border-slate-200/50">
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Value</p>
-                <p className="text-sm font-bold text-slate-900 font-mono">{formatCurrency(status.totalDisbursed)}</p>
+                <p className="text-sm font-bold text-slate-900 font-mono">{formatCurrency(status.totalAmount)}</p>
             </div>
         </div>
     )

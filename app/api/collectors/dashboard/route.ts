@@ -13,26 +13,30 @@ export async function GET(req: NextRequest) {
 
         const collectorId = parseInt(session.user.id)
         const today = new Date()
-        const todayStart = new Date(today.setHours(0, 0, 0, 0))
-        const todayEnd = new Date(today.setHours(23, 59, 59, 999))
+        const todayStart = new Date(today)
+        todayStart.setHours(0, 0, 0, 0)
+        const todayEnd = new Date(today)
+        todayEnd.setHours(23, 59, 59, 999)
 
-        // 1. Get stats
-        const activeTokensCount = await prisma.token.count({
+        // 1. Get batch-based stats
+        const activeBatchesCount = await prisma.tokenBatch.count({
             where: { collectorId, status: 'active' }
         })
 
-        const overdueTokensCount = await prisma.token.count({
+        const overdueBatchesCount = await prisma.tokenBatch.count({
             where: { collectorId, status: 'overdue' }
         })
 
-        const todaySchedules = await prisma.repaymentSchedule.findMany({
+        // Get today's batch schedules
+        const todayBatchSchedules = await prisma.batchRepaymentSchedule.findMany({
             where: {
-                token: { collectorId },
+                batch: { collectorId },
                 scheduleDate: { gte: todayStart, lte: todayEnd }
             }
         })
 
-        const todayCollection = await prisma.payment.aggregate({
+        // Get today's collection from batch payments
+        const todayBatchCollection = await prisma.batchPayment.aggregate({
             where: {
                 collectorId,
                 paymentDate: { gte: todayStart, lte: todayEnd }
@@ -40,17 +44,42 @@ export async function GET(req: NextRequest) {
             _sum: { amount: true }
         })
 
+        // Also include individual token payments (for backward compatibility with non-batch tokens)
+        const todayTokenCollection = await prisma.payment.aggregate({
+            where: {
+                collectorId,
+                paymentDate: { gte: todayStart, lte: todayEnd },
+                token: {
+                    batchId: null // Only non-batch tokens
+                }
+            },
+            _sum: { amount: true }
+        })
+
+        // Get today's individual token schedules (for non-batch tokens)
+        const todayTokenSchedules = await prisma.repaymentSchedule.findMany({
+            where: {
+                token: { 
+                    collectorId,
+                    batchId: null // Only non-batch tokens
+                },
+                scheduleDate: { gte: todayStart, lte: todayEnd }
+            }
+        })
+
         const stats = {
-            todayCollection: Number(todayCollection._sum.amount || 0),
-            todayTarget: todaySchedules.reduce((sum, s) => sum + Number(s.totalDue), 0),
-            activeTokens: activeTokensCount,
-            overdueTokens: overdueTokensCount,
-            todaySchedules: todaySchedules.length,
-            pendingSchedules: todaySchedules.filter(s => s.status !== 'paid').length
+            todayCollection: Number(todayBatchCollection._sum.amount || 0) + Number(todayTokenCollection._sum.amount || 0),
+            todayTarget: todayBatchSchedules.reduce((sum, s) => sum + Number(s.totalDue), 0) + 
+                        todayTokenSchedules.reduce((sum, s) => sum + Number(s.totalDue), 0),
+            activeTokens: activeBatchesCount,
+            overdueTokens: overdueBatchesCount,
+            todaySchedules: todayBatchSchedules.length + todayTokenSchedules.length,
+            pendingSchedules: todayBatchSchedules.filter(s => s.status !== 'paid').length + 
+                             todayTokenSchedules.filter(s => s.status !== 'paid').length
         }
 
-        // 2. Get today's tokens for the list
-        const tokens = await prisma.token.findMany({
+        // 2. Get today's batches for the list (priority collections)
+        const batches = await prisma.tokenBatch.findMany({
             where: {
                 collectorId,
                 status: { in: ['active', 'overdue'] }
@@ -59,34 +88,50 @@ export async function GET(req: NextRequest) {
                 customer: {
                     select: { name: true, mobile: true }
                 },
-                schedules: {
+                batchSchedules: {
                     where: {
                         scheduleDate: { gte: todayStart, lte: todayEnd }
                     },
-                    take: 1
+                    take: 1,
+                    orderBy: {
+                        scheduleDate: 'asc'
+                    }
                 }
             },
+            orderBy: [
+                { status: 'asc' }, // Overdue first
+                { createdAt: 'desc' }
+            ],
             take: 10
         })
 
-        const formattedTokens = tokens.map(t => ({
-            id: t.id,
-            tokenNo: t.tokenNo,
-            customer: t.customer,
-            totalAmount: Number(t.totalAmount),
-            dailyAmount: Number(t.dailyInstallment),
-            todaySchedule: t.schedules[0] ? {
-                scheduleDate: t.schedules[0].scheduleDate,
-                totalDue: Number(t.schedules[0].totalDue),
-                status: t.schedules[0].status
-            } : undefined
-        }))
+        const formattedBatches = batches.map(batch => {
+            const todaySchedule = batch.batchSchedules[0]
+            return {
+                id: batch.id,
+                batchNo: batch.batchNo,
+                quantity: batch.quantity,
+                customer: batch.customer,
+                totalAmount: Number(batch.totalBatchAmount),
+                dailyAmount: Number(batch.totalDailyAmount),
+                todaySchedule: todaySchedule ? {
+                    scheduleDate: todaySchedule.scheduleDate,
+                    totalDue: Number(todaySchedule.totalDue) - Number(todaySchedule.paidAmount),
+                    status: todaySchedule.status
+                } : undefined
+            }
+        })
 
         return NextResponse.json({
             success: true,
             data: {
-                stats,
-                tokens: formattedTokens
+                stats: {
+                    ...stats,
+                    activeBatches: stats.activeTokens,
+                    overdueBatches: stats.overdueTokens
+                },
+                batches: formattedBatches,
+                tokens: formattedBatches // Keep 'tokens' key for backward compatibility with UI
             }
         })
 

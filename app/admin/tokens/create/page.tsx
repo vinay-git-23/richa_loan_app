@@ -51,7 +51,8 @@ export default function CreateTokenPage() {
         interestType: 'percentage', // percentage or fixed
         interestValue: '',
         durationDays: '100',
-        startDate: format(new Date(), 'yyyy-MM-dd')
+        startDate: format(new Date(), 'yyyy-MM-dd'),
+        quantity: '1' // Number of tokens to create
     })
 
     // Calculation Results
@@ -116,7 +117,7 @@ export default function CreateTokenPage() {
         setError(null)
 
         try {
-            const response = await fetch('/api/tokens', {
+            const response = await fetch('/api/token-batches', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(formData)
@@ -127,7 +128,7 @@ export default function CreateTokenPage() {
             if (result.success) {
                 router.push('/admin/tokens')
             } else {
-                setError(result.error || 'Failed to initialize token')
+                setError(result.error || 'Failed to initialize token batch')
             }
         } catch (err) {
             setError('An unexpected error occurred')
@@ -166,8 +167,8 @@ export default function CreateTokenPage() {
                         <ArrowLeft className="w-5 h-5" />
                     </button>
                     <div>
-                        <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Initialize New Token</h1>
-                        <p className="text-slate-500 text-sm mt-1">Fill in the loan details to create a new recovery schedule.</p>
+                        <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Initialize New Token Batch</h1>
+                        <p className="text-slate-500 text-sm mt-1">Create single or multiple tokens as a unified loan entity.</p>
                     </div>
                 </div>
             </div>
@@ -314,7 +315,7 @@ export default function CreateTokenPage() {
                                 </div>
                             </div>
 
-                            <div className="space-y-2 md:col-span-2">
+                            <div className="space-y-2">
                                 <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">Start Date</label>
                                 <div className="relative group">
                                     <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-orange-500 transition-colors" />
@@ -326,6 +327,24 @@ export default function CreateTokenPage() {
                                         className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none text-slate-900 font-bold transition-all text-sm"
                                     />
                                 </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">Quantity (Same Token)</label>
+                                <div className="relative group">
+                                    <Activity className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-orange-500 transition-colors" />
+                                    <input
+                                        type="number"
+                                        required
+                                        min="1"
+                                        max="50"
+                                        value={formData.quantity}
+                                        onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+                                        className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none text-slate-900 font-bold transition-all text-sm"
+                                        placeholder="1"
+                                    />
+                                </div>
+                                <p className="text-xs text-slate-500 ml-1">Number of identical tokens to create (max 50)</p>
                             </div>
                         </div>
                     </section>
@@ -401,7 +420,17 @@ export default function CreateTokenPage() {
 
                                         <div className="space-y-4">
                                             <div className="flex items-center justify-between py-3 border-b border-white/5">
-                                                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Daily Payment</p>
+                                                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Quantity</p>
+                                                <p className="text-sm font-bold text-orange-400">{formData.quantity} Token{parseInt(formData.quantity) > 1 ? 's' : ''}</p>
+                                            </div>
+
+                                            <div className="flex items-center justify-between py-3 border-b border-white/5">
+                                                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Combined Total</p>
+                                                <p className="text-sm font-bold text-green-400">{formatCurrency(calculations.totalAmount * parseInt(formData.quantity || '1'))}</p>
+                                            </div>
+
+                                            <div className="flex items-center justify-between py-3 border-b border-white/5">
+                                                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Daily Payment (Each)</p>
                                                 <p className="text-sm font-bold text-white">{formatCurrency(calculations.dailyInstallment)}</p>
                                             </div>
 
@@ -435,7 +464,7 @@ export default function CreateTokenPage() {
                                             <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
                                         ) : (
                                             <>
-                                                Create Token
+                                                Create Token Batch
                                                 <ArrowRight className="w-4 h-4" />
                                             </>
                                         )}
@@ -447,15 +476,19 @@ export default function CreateTokenPage() {
 
                         {/* Note Card */}
                         <div className="bg-slate-50 rounded-2xl p-6 border border-slate-200">
-                            <h4 className="text-xs font-bold text-slate-900 uppercase tracking-widest mb-3">Policy Note</h4>
+                            <h4 className="text-xs font-bold text-slate-900 uppercase tracking-widest mb-3">Batch System Notes</h4>
                             <ul className="space-y-3">
                                 <li className="flex items-start gap-3 text-[10px] font-medium text-slate-500 leading-relaxed">
                                     <div className="w-1 h-1 bg-slate-300 rounded-full shrink-0 mt-1.5"></div>
-                                    <span>Total amount includes the principal and calculated interest.</span>
+                                    <span>Multiple tokens treated as single loan entity for collection.</span>
                                 </li>
                                 <li className="flex items-start gap-3 text-[10px] font-medium text-slate-500 leading-relaxed">
                                     <div className="w-1 h-1 bg-slate-300 rounded-full shrink-0 mt-1.5"></div>
-                                    <span>Payment schedules will be automatically generated upon creation.</span>
+                                    <span>Combined daily amount collected as one payment.</span>
+                                </li>
+                                <li className="flex items-start gap-3 text-[10px] font-medium text-slate-500 leading-relaxed">
+                                    <div className="w-1 h-1 bg-slate-300 rounded-full shrink-0 mt-1.5"></div>
+                                    <span>Penalties calculated per token, waivable at collection time.</span>
                                 </li>
                             </ul>
                         </div>

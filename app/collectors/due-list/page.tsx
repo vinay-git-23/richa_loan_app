@@ -13,6 +13,7 @@ import {
     AlertCircle,
     ChevronRight,
     TrendingUp,
+    Wallet,
     FileText,
     Clock
 } from 'lucide-react'
@@ -89,27 +90,27 @@ export default function DueListPage() {
 
     return (
         <div className="min-h-screen bg-[#F8FAFC] pb-24 font-sans">
-            {/* Header */}
-            <div className="bg-[#0F172A] pt-8 pb-16 px-6 relative overflow-hidden text-white">
-                <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
+            {/* Header - Lighter Orange Theme */}
+            <div className="bg-gradient-to-br from-orange-500 to-orange-400 pt-8 pb-16 px-6 relative overflow-hidden text-white">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
 
                 <div className="relative z-10 flex items-center gap-4 mb-6">
                     <button
                         onClick={() => router.push('/collectors/dashboard')}
-                        className="p-2 bg-slate-800/50 rounded-xl border border-slate-700/50 text-slate-300 hover:text-white transition-colors backdrop-blur-sm"
+                        className="p-2 bg-white/20 hover:bg-white/30 rounded-xl transition-colors backdrop-blur-sm"
                     >
-                        <ArrowLeft className="w-5 h-5" />
+                        <ArrowLeft className="w-5 h-5 text-white" />
                     </button>
-                    <h1 className="text-xl font-bold tracking-tight">Today's Due List</h1>
+                    <h1 className="text-xl font-black tracking-tight">Today's Due List</h1>
                 </div>
 
-                <div className="relative z-10 bg-white/5 backdrop-blur-md rounded-2xl p-5 border border-white/10 shadow-2xl flex items-center justify-between">
+                <div className="relative z-10 bg-white/20 backdrop-blur-md rounded-2xl p-5 border border-white/30 shadow-2xl flex items-center justify-between">
                     <div>
-                        <p className="text-blue-300 text-[10px] font-black uppercase tracking-widest mb-1">Total Due Volume</p>
+                        <p className="text-orange-100 text-[10px] font-black uppercase tracking-widest mb-1">Total Due Volume</p>
                         <p className="text-3xl font-black">{formatCurrency(summary?.totalAmount || 0)}</p>
                     </div>
                     <div className="text-right">
-                        <div className="bg-red-500/20 text-red-400 px-3 py-1 rounded-full text-[10px] font-black border border-red-500/20">
+                        <div className="bg-red-500/30 text-white px-3 py-1 rounded-full text-[10px] font-black border border-red-400/30">
                             {summary?.overdueCount || 0} OVERDUE
                         </div>
                     </div>
