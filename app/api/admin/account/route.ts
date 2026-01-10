@@ -136,9 +136,9 @@ export async function GET(req: NextRequest) {
                         if (t.createdByType === 'admin') {
                             const admin = await prisma.adminUser.findUnique({
                                 where: { id: t.createdBy },
-                                select: { username: true, name: true }
+                                select: { username: true }
                             })
-                            creatorName = admin?.name || admin?.username || `Admin #${t.createdBy}`
+                            creatorName = admin?.username || `Admin #${t.createdBy}`
                         } else if (t.createdByType === 'collector') {
                             const collector = await prisma.collector.findUnique({
                                 where: { id: t.createdBy },

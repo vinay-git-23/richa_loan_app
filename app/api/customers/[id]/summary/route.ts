@@ -63,7 +63,21 @@ export async function GET(
     }
 
     // Calculate consolidated summary across all tokens
-    const consolidatedSummary = {
+    const consolidatedSummary: {
+      totalTokens: number
+      activeTokens: number
+      closedTokens: number
+      overdueTokens: number
+      cancelledTokens: number
+      totalBorrowed: number
+      totalAmountDue: number
+      totalPaid: number
+      totalOutstanding: number
+      totalOverdue: number
+      totalPenalties: number
+      nextPaymentDue: Date | null
+      todaysDue: number
+    } = {
       totalTokens: customer.tokens.length,
       activeTokens: 0,
       closedTokens: 0,
@@ -75,7 +89,7 @@ export async function GET(
       totalOutstanding: 0,
       totalOverdue: 0,
       totalPenalties: 0,
-      nextPaymentDue: null as Date | null,
+      nextPaymentDue: null,
       todaysDue: 0,
     }
 
@@ -142,8 +156,18 @@ export async function GET(
       consolidatedSummary.todaysDue += todayDue
 
       // Track earliest next payment due date
-      if (nextDueDate && (!consolidatedSummary.nextPaymentDue || nextDueDate < consolidatedSummary.nextPaymentDue)) {
-        consolidatedSummary.nextPaymentDue = nextDueDate
+      if (nextDueDate !== null) {
+        const currentNextDue = consolidatedSummary.nextPaymentDue
+        if (currentNextDue === null) {
+          consolidatedSummary.nextPaymentDue = nextDueDate
+        } else {
+          // Both are non-null Date objects
+          const nextDue = nextDueDate as Date
+          const currentDue = currentNextDue as Date
+          if (nextDue.getTime() < currentDue.getTime()) {
+            consolidatedSummary.nextPaymentDue = nextDueDate
+          }
+        }
       }
 
       return {

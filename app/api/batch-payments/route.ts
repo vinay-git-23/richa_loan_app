@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
       for (const schedule of pendingSchedules) {
         if (remainingAmount <= 0) break
 
-        const outstandingAmount = schedule.totalDue - schedule.paidAmount - schedule.penaltyWaived
+        const outstandingAmount = Number(schedule.totalDue) - Number(schedule.paidAmount) - Number(schedule.penaltyWaived)
 
         // Calculate how much to apply to this schedule
         const amountToApply = Math.min(remainingAmount, outstandingAmount)
@@ -108,17 +108,17 @@ export async function POST(req: NextRequest) {
         // Determine if we're waiving penalty on this schedule
         const scheduleWaived = Math.min(
           penaltyWaivedAmount,
-          schedule.totalPenalty - schedule.penaltyWaived
+          Number(schedule.totalPenalty) - Number(schedule.penaltyWaived)
         )
 
         // Calculate new paid amount and status
-        const newPaidAmount = schedule.paidAmount + amountToApply
-        const newWaivedAmount = schedule.penaltyWaived + scheduleWaived
+        const newPaidAmount = Number(schedule.paidAmount) + amountToApply
+        const newWaivedAmount = Number(schedule.penaltyWaived) + scheduleWaived
         const totalReceived = newPaidAmount + newWaivedAmount
 
         let newStatus: 'pending' | 'paid' | 'overdue' | 'partial' = schedule.status
 
-        if (totalReceived >= schedule.totalDue) {
+        if (totalReceived >= Number(schedule.totalDue)) {
           newStatus = 'paid'
         } else if (newPaidAmount > 0) {
           newStatus = 'partial'

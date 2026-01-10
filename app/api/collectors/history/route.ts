@@ -59,16 +59,18 @@ export async function GET(req: NextRequest) {
         })
 
         // Format for frontend
-        const history = payments.map(p => ({
-            id: p.id,
-            amount: Number(p.amount),
-            paymentDate: p.paymentDate,
-            paymentMode: p.paymentMode,
-            remarks: p.remarks,
-            tokenNo: p.token.tokenNo,
-            customerName: p.token.customer.name,
-            customerMobile: p.token.customer.mobile
-        }))
+        const history = payments
+            .filter(p => p.token && p.token.customer) // Filter out payments without token or customer
+            .map(p => ({
+                id: p.id,
+                amount: Number(p.amount),
+                paymentDate: p.paymentDate,
+                paymentMode: p.paymentMode,
+                remarks: p.remarks,
+                tokenNo: p.token!.tokenNo,
+                customerName: p.token!.customer.name,
+                customerMobile: p.token!.customer.mobile
+            }))
 
         return NextResponse.json({
             success: true,

@@ -222,15 +222,17 @@ export async function GET(req: NextRequest) {
                     overdueTokens,
                     totalOverdueAmount: Math.round(totalOverdueAmount * 100) / 100,
                 },
-                recentPayments: recentPayments.map((payment) => ({
-                    id: payment.id,
-                    amount: Number(payment.amount),
-                    date: payment.paymentDate,
-                    customerName: payment.token.customer.name,
-                    collectorName: payment.collector.name,
-                    tokenNo: payment.token.tokenNo,
-                    paymentMode: payment.paymentMode,
-                })),
+                recentPayments: recentPayments
+                    .filter((payment) => payment.token && payment.token.customer)
+                    .map((payment) => ({
+                        id: payment.id,
+                        amount: Number(payment.amount),
+                        date: payment.paymentDate,
+                        customerName: payment.token!.customer.name,
+                        collectorName: payment.collector.name,
+                        tokenNo: payment.token!.tokenNo,
+                        paymentMode: payment.paymentMode,
+                    })),
                 overdueCustomers: overdueCustomers.map((token) => ({
                     tokenNo: token.tokenNo,
                     customerName: token.customer.name,

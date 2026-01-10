@@ -10,10 +10,26 @@ interface Collector {
   name: string
   collectorId: string
   mobile: string
+  email?: string | null
+  plainPassword?: string | null
   isActive: boolean
   createdAt: string
+  lastLogin?: string | null
   activeTokens?: number
   totalCollected?: number
+}
+
+// Type for ViewCollectorModal with required nullable fields
+interface CollectorViewDetails {
+  id: number
+  name: string
+  collectorId: string
+  mobile: string
+  email: string | null
+  plainPassword: string | null
+  isActive: boolean
+  createdAt: string
+  lastLogin: string | null
 }
 
 export default function CollectorsPage() {
@@ -24,7 +40,7 @@ export default function CollectorsPage() {
   const [showModal, setShowModal] = useState(false)
   const [editingCollector, setEditingCollector] = useState<Collector | null>(null)
   const [showViewModal, setShowViewModal] = useState(false)
-  const [viewingCollector, setViewingCollector] = useState<Collector | null>(null)
+  const [viewingCollector, setViewingCollector] = useState<CollectorViewDetails | null>(null)
 
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
@@ -100,7 +116,19 @@ export default function CollectorsPage() {
       const response = await fetch(`/api/collectors/${collector.id}`)
       const result = await response.json()
       if (result.success) {
-        setViewingCollector(result.data)
+        // Ensure all required fields are present with proper types for ViewCollectorModal
+        const collectorData: CollectorViewDetails = {
+          id: result.data.id,
+          name: result.data.name,
+          collectorId: result.data.collectorId,
+          mobile: result.data.mobile,
+          email: result.data.email ?? null,
+          plainPassword: result.data.plainPassword ?? null,
+          isActive: result.data.isActive,
+          createdAt: result.data.createdAt,
+          lastLogin: result.data.lastLogin ?? null
+        }
+        setViewingCollector(collectorData)
         setShowViewModal(true)
       } else {
         alert('Failed to fetch collector details')
@@ -368,7 +396,7 @@ export default function CollectorsPage() {
       {/* View Details Modal */}
       {showViewModal && viewingCollector && (
         <ViewCollectorModal
-          collector={viewingCollector}
+          collector={viewingCollector as CollectorViewDetails}
           onClose={handleCloseViewModal}
         />
       )}
@@ -546,22 +574,12 @@ function ViewCollectorModal({
   collector,
   onClose,
 }: {
-  collector: {
-    id: number
-    name: string
-    collectorId: string
-    mobile: string
-    email: string | null
-    plainPassword: string | null
-    isActive: boolean
-    createdAt: string
-    lastLogin: string | null
-  }
+  collector: CollectorViewDetails
   onClose: () => void
 }) {
   const [showPassword, setShowPassword] = useState(false)
   const [copied, setCopied] = useState(false)
-  const [currentCollector, setCurrentCollector] = useState(collector)
+  const [currentCollector, setCurrentCollector] = useState<CollectorViewDetails>(collector)
   const [resettingPassword, setResettingPassword] = useState(false)
 
   const copyToClipboard = (text: string) => {
@@ -588,7 +606,7 @@ function ViewCollectorModal({
         // Update collector with new password
         setCurrentCollector({
           ...currentCollector,
-          plainPassword: result.data.generatedPassword,
+          plainPassword: result.data.generatedPassword || null,
         })
 
         const credentials = `Password reset successfully!\n\nNew Login Credentials:\nCollector ID: ${currentCollector.collectorId}\nPassword: ${result.data.generatedPassword}\n\n⚠️ IMPORTANT: Please save these credentials now. The password cannot be retrieved later.`
