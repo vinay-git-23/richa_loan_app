@@ -223,6 +223,9 @@ export async function POST(req: NextRequest) {
       }
 
       return tokens
+    }, {
+      maxWait: 10000, // Maximum time to wait for a transaction slot
+      timeout: 30000, // Maximum time for the transaction to complete (30 seconds)
     })
 
     return NextResponse.json({
